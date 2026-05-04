@@ -1,5 +1,5 @@
-import { HomeHero } from "@/components/home-hero";
+import { AuthShell } from "@/components/auth-shell";
 
 export default function Home() {
-  return <HomeHero />;
+  return <AuthShell />;
 }

@@ -7,6 +7,10 @@ Rails.application.routes.draw do
 
   namespace :api do
     namespace :v1 do
+      post "auth/signup", to: "auth#signup"
+      post "auth/login", to: "auth#login"
+      get "auth/me", to: "auth#me"
+      delete "auth/logout", to: "auth#logout"
       get :health, to: "health#show"
     end
   end
