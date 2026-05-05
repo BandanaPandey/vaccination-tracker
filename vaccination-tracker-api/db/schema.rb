@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_04_093100) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_05_093000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -26,6 +26,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_04_093100) do
     t.index ["user_id"], name: "index_auth_identities_on_user_id"
   end
 
+  create_table "profiles", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.date "date_of_birth"
+    t.string "gender"
+    t.text "medical_notes"
+    t.string "name", null: false
+    t.string "relationship_kind", null: false
+    t.string "schedule_region", default: "IN", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["user_id", "created_at"], name: "index_profiles_on_user_id_and_created_at"
+    t.index ["user_id"], name: "index_profiles_on_user_id"
+  end
+
   create_table "users", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "email", null: false
@@ -36,4 +50,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_04_093100) do
   end
 
   add_foreign_key "auth_identities", "users"
+  add_foreign_key "profiles", "users"
 end

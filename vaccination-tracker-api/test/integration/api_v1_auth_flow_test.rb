@@ -18,6 +18,8 @@ class ApiV1AuthFlowTest < ActionDispatch::IntegrationTest
     assert_equal "Priya Shah", json_response["user"]["name"]
     assert_equal ["password"], json_response["auth"]["available_methods"]
     assert_equal true, json_response["auth"]["oauth_ready"]
+    assert_equal 1, json_response["profiles"].length
+    assert_equal "self", json_response["profiles"].first["relationship_kind"]
   end
 
   test "logs in an existing user" do
@@ -27,6 +29,8 @@ class ApiV1AuthFlowTest < ActionDispatch::IntegrationTest
       password: "password123",
       password_confirmation: "password123"
     )
+
+    user.profiles.create!(name: "Existing User", relationship_kind: "self", schedule_region: "IN")
 
     post "/api/v1/auth/login", params: {
       session: {
@@ -38,6 +42,7 @@ class ApiV1AuthFlowTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert json_response["token"].present?
     assert_equal user.email, json_response["user"]["email"]
+    assert_equal 1, json_response["profiles"].length
   end
 
   test "rejects invalid credentials" do
@@ -67,10 +72,13 @@ class ApiV1AuthFlowTest < ActionDispatch::IntegrationTest
       password_confirmation: "password123"
     )
 
+    user.profiles.create!(name: "Current User", relationship_kind: "self", schedule_region: "IN")
+
     get "/api/v1/auth/me", headers: auth_headers_for(user)
 
     assert_response :success
     assert_equal user.email, json_response["user"]["email"]
+    assert_equal 1, json_response["profiles"].length
     assert_equal true, json_response["auth"]["oauth_ready"]
   end
 

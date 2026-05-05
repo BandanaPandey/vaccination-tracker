@@ -6,7 +6,7 @@ module Api
       def signup
         user = User.new(signup_params)
 
-        if user.save
+        if create_user_with_default_profile(user)
           render json: auth_payload(user), status: :created
         else
           render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
@@ -51,8 +51,38 @@ module Api
           auth: {
             available_methods: ["password"],
             oauth_ready: true
-          }
+          },
+          profiles: profiles_payload(user)
         }
+      end
+
+      def create_user_with_default_profile(user)
+        User.transaction do
+          user.save!
+          user.profiles.create!(
+            name: user.name,
+            relationship_kind: "self",
+            schedule_region: Profile::DEFAULT_SCHEDULE_REGION
+          )
+        end
+
+        true
+      rescue ActiveRecord::RecordInvalid
+        false
+      end
+
+      def profiles_payload(user)
+        user.profiles.ordered.map do |profile|
+          {
+            id: profile.id,
+            name: profile.name,
+            date_of_birth: profile.date_of_birth&.iso8601,
+            gender: profile.gender,
+            relationship_kind: profile.relationship_kind,
+            medical_notes: profile.medical_notes,
+            schedule_region: profile.schedule_region
+          }
+        end
       end
 
       def user_payload(user)

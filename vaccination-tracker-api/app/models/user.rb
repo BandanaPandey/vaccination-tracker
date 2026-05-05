@@ -2,6 +2,7 @@ class User < ApplicationRecord
   has_secure_password
 
   has_many :auth_identities, dependent: :destroy
+  has_many :profiles, -> { ordered }, dependent: :destroy
 
   before_validation :normalize_email
 

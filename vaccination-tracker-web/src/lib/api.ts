@@ -1,5 +1,15 @@
 import { getApiBaseUrl } from "@/lib/config";
 
+export type Profile = {
+  id: number;
+  name: string;
+  date_of_birth: string | null;
+  gender: string | null;
+  relationship_kind: "self" | "child" | "dependent";
+  medical_notes: string | null;
+  schedule_region: string;
+};
+
 export type CurrentUser = {
   id: number;
   name: string;
@@ -15,11 +25,22 @@ export type AuthResponse = {
   token: string;
   user: CurrentUser;
   auth: AuthMetadata;
+  profiles: Profile[];
 };
 
 export type CurrentUserResponse = {
   user: CurrentUser;
   auth: AuthMetadata;
+  profiles: Profile[];
+};
+
+export type ProfileInput = {
+  name: string;
+  date_of_birth: string;
+  gender: string;
+  relationship_kind: "self" | "child" | "dependent";
+  medical_notes: string;
+  schedule_region: string;
 };
 
 function authHeaders(token?: string): Record<string, string> {
@@ -99,4 +120,52 @@ export async function logout(token: string) {
     method: "DELETE",
     headers: authHeaders(token),
   }).then((response) => parseJson<{ message: string }>(response));
+}
+
+export async function fetchProfiles(token: string) {
+  const apiBaseUrl = getApiBaseUrl();
+
+  return fetch(`${apiBaseUrl}/api/v1/profiles`, {
+    cache: "no-store",
+    headers: authHeaders(token),
+  }).then((response) => parseJson<Profile[]>(response));
+}
+
+export async function createProfile(input: ProfileInput, token: string) {
+  const apiBaseUrl = getApiBaseUrl();
+
+  return fetch(`${apiBaseUrl}/api/v1/profiles`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(token),
+    },
+    body: JSON.stringify({
+      profile: input,
+    }),
+  }).then((response) => parseJson<Profile>(response));
+}
+
+export async function updateProfile(id: number, input: ProfileInput, token: string) {
+  const apiBaseUrl = getApiBaseUrl();
+
+  return fetch(`${apiBaseUrl}/api/v1/profiles/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(token),
+    },
+    body: JSON.stringify({
+      profile: input,
+    }),
+  }).then((response) => parseJson<Profile>(response));
+}
+
+export async function deleteProfile(id: number, token: string) {
+  const apiBaseUrl = getApiBaseUrl();
+
+  return fetch(`${apiBaseUrl}/api/v1/profiles/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  }).then((response) => parseJson<void>(response));
 }
