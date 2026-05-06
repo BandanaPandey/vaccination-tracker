@@ -1,5 +1,32 @@
 import { getApiBaseUrl } from "@/lib/config";
 
+export type ProofMetadata = {
+  proof_attached: boolean;
+  proof_filename?: string;
+  proof_content_type?: string;
+  proof_url?: string;
+};
+
+export type VaccinationRecord = ProofMetadata & {
+  id: number;
+  profile_id: number;
+  vaccine_name: string;
+  date_administered: string;
+  dose_number: number | null;
+  provider: string | null;
+  notes: string | null;
+};
+
+export type VaccinationRecordInput = {
+  vaccine_name: string;
+  date_administered: string;
+  dose_number: string;
+  provider: string;
+  notes: string;
+  proof?: File | null;
+  remove_proof?: boolean;
+};
+
 export type Profile = {
   id: number;
   name: string;
@@ -69,6 +96,30 @@ async function parseJson<T>(response: Response): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+function appendIfPresent(formData: FormData, key: string, value: string | File | null | undefined) {
+  if (value === undefined || value === null || value === "") {
+    return;
+  }
+
+  formData.append(key, value);
+}
+
+function buildVaccinationRecordFormData(input: VaccinationRecordInput) {
+  const formData = new FormData();
+  appendIfPresent(formData, "vaccination_record[vaccine_name]", input.vaccine_name);
+  appendIfPresent(formData, "vaccination_record[date_administered]", input.date_administered);
+  appendIfPresent(formData, "vaccination_record[dose_number]", input.dose_number);
+  appendIfPresent(formData, "vaccination_record[provider]", input.provider);
+  appendIfPresent(formData, "vaccination_record[notes]", input.notes);
+  appendIfPresent(formData, "vaccination_record[proof]", input.proof);
+
+  if (input.remove_proof) {
+    formData.append("vaccination_record[remove_proof]", "true");
+  }
+
+  return formData;
 }
 
 export async function signUp(input: {
@@ -165,6 +216,49 @@ export async function deleteProfile(id: number, token: string) {
   const apiBaseUrl = getApiBaseUrl();
 
   return fetch(`${apiBaseUrl}/api/v1/profiles/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  }).then((response) => parseJson<void>(response));
+}
+
+export async function fetchVaccinationRecords(profileId: number, token: string) {
+  const apiBaseUrl = getApiBaseUrl();
+
+  return fetch(`${apiBaseUrl}/api/v1/profiles/${profileId}/vaccination_records`, {
+    cache: "no-store",
+    headers: authHeaders(token),
+  }).then((response) => parseJson<VaccinationRecord[]>(response));
+}
+
+export async function createVaccinationRecord(profileId: number, input: VaccinationRecordInput, token: string) {
+  const apiBaseUrl = getApiBaseUrl();
+
+  return fetch(`${apiBaseUrl}/api/v1/profiles/${profileId}/vaccination_records`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: buildVaccinationRecordFormData(input),
+  }).then((response) => parseJson<VaccinationRecord>(response));
+}
+
+export async function updateVaccinationRecord(
+  profileId: number,
+  recordId: number,
+  input: VaccinationRecordInput,
+  token: string,
+) {
+  const apiBaseUrl = getApiBaseUrl();
+
+  return fetch(`${apiBaseUrl}/api/v1/profiles/${profileId}/vaccination_records/${recordId}`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: buildVaccinationRecordFormData(input),
+  }).then((response) => parseJson<VaccinationRecord>(response));
+}
+
+export async function deleteVaccinationRecord(profileId: number, recordId: number, token: string) {
+  const apiBaseUrl = getApiBaseUrl();
+
+  return fetch(`${apiBaseUrl}/api/v1/profiles/${profileId}/vaccination_records/${recordId}`, {
     method: "DELETE",
     headers: authHeaders(token),
   }).then((response) => parseJson<void>(response));

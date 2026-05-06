@@ -4,6 +4,8 @@ class Profile < ApplicationRecord
 
   belongs_to :user
 
+  has_many :vaccination_records, -> { ordered }, dependent: :destroy
+
   before_validation :normalize_schedule_region
 
   validates :name, presence: true

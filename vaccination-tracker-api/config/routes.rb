@@ -11,7 +11,9 @@ Rails.application.routes.draw do
       post "auth/login", to: "auth#login"
       get "auth/me", to: "auth#me"
       delete "auth/logout", to: "auth#logout"
-      resources :profiles, only: %i[index show create update destroy]
+      resources :profiles, only: %i[index show create update destroy] do
+        resources :vaccination_records, only: %i[index show create update destroy]
+      end
       get :health, to: "health#show"
     end
   end
