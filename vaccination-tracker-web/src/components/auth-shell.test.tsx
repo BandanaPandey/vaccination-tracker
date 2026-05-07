@@ -33,11 +33,45 @@ function recordPayload(overrides?: Partial<api.VaccinationRecord>): api.Vaccinat
   ];
 }
 
+function schedulePayload(overrides?: Partial<api.ProfileSchedule>): api.ProfileSchedule {
+  return {
+    profile_id: 1,
+    schedule_region: "IN",
+    generated_at: "2026-05-07T09:00:00Z",
+    missing_date_of_birth: false,
+    summary: { completed: 1, upcoming: 2, overdue: 1 },
+    items: [
+      {
+        schedule_key: "hep-b-birth",
+        vaccine_name: "Hepatitis B",
+        dose_label: "Birth dose",
+        due_date: "2025-01-01",
+        recommended_age_window: "At birth",
+        status: "overdue",
+        matched_record_id: null,
+        matched_record_date: null,
+      },
+      {
+        schedule_key: "mmr-1",
+        vaccine_name: "MMR",
+        dose_label: "Dose 1",
+        due_date: "2025-10-01",
+        recommended_age_window: "9 months",
+        status: "completed",
+        matched_record_id: 1,
+        matched_record_date: "2025-10-01",
+      },
+    ],
+    ...overrides,
+  };
+}
+
 describe("AuthShell", () => {
   beforeEach(() => {
     window.localStorage.clear();
     vi.restoreAllMocks();
     vi.spyOn(api, "fetchVaccinationRecords").mockResolvedValue([]);
+    vi.spyOn(api, "fetchProfileSchedule").mockResolvedValue(schedulePayload({ missing_date_of_birth: true, items: [], summary: { completed: 0, upcoming: 0, overdue: 0 } }));
   });
 
   it("renders login mode by default", () => {
@@ -163,7 +197,7 @@ describe("AuthShell", () => {
       user: { id: 1, name: "Bandana Pandey", email: "bandana@example.com" },
       auth: { available_methods: ["password"], oauth_ready: true },
       profiles: [
-        ...authPayload(),
+        ...authPayload({ date_of_birth: "1990-01-01" }),
         {
           id: 2,
           name: "Aarav Pandey",
@@ -178,6 +212,26 @@ describe("AuthShell", () => {
     vi.spyOn(api, "fetchVaccinationRecords").mockImplementation(async (profileId) => {
       if (profileId === 1) return recordPayload();
       return recordPayload({ id: 2, profile_id: 2, vaccine_name: "Polio", proof_attached: true, proof_filename: "proof.pdf", proof_content_type: "application/pdf", proof_url: "/rails/active_storage/blobs/proof" });
+    });
+    vi.spyOn(api, "fetchProfileSchedule").mockImplementation(async (profileId) => {
+      if (profileId === 1) return schedulePayload({ profile_id: 1, summary: { completed: 1, upcoming: 2, overdue: 1 } });
+      return schedulePayload({
+        profile_id: 2,
+        schedule_region: "US",
+        summary: { completed: 0, upcoming: 3, overdue: 1 },
+        items: [
+          {
+            schedule_key: "dtap-1",
+            vaccine_name: "DTaP",
+            dose_label: "Dose 1",
+            due_date: "2022-10-10",
+            recommended_age_window: "2 months",
+            status: "overdue",
+            matched_record_id: null,
+            matched_record_date: null,
+          },
+        ],
+      });
     });
     vi.spyOn(api, "createVaccinationRecord").mockResolvedValue({
       id: 3,
@@ -206,7 +260,9 @@ describe("AuthShell", () => {
 
     render(<AuthShell />);
 
-    await waitFor(() => expect(screen.getByText(/mmr/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText(/mmr/i).length).toBeGreaterThan(0));
+    expect(screen.getByText(/schedule preview/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/completed/i).length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByLabelText(/vaccine name/i), { target: { value: "Flu Shot" } });
     fireEvent.change(screen.getByLabelText(/date administered/i), { target: { value: "2025-01-12" } });
@@ -230,8 +286,23 @@ describe("AuthShell", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: /aarav pandey/i })[0]);
     await waitFor(() => expect(screen.getByText(/polio/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/dtap/i)).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: /delete record/i }));
     await waitFor(() => expect(screen.queryByText(/polio/i)).not.toBeInTheDocument());
+  });
+
+  it("shows a clear empty schedule state when date of birth is missing", async () => {
+    window.localStorage.setItem("vaccination-tracker-auth-token", "saved-token");
+    vi.spyOn(api, "fetchCurrentUser").mockResolvedValue({
+      user: { id: 1, name: "Bandana Pandey", email: "bandana@example.com" },
+      auth: { available_methods: ["password"], oauth_ready: true },
+      profiles: authPayload({ date_of_birth: null }),
+    });
+
+    render(<AuthShell />);
+
+    await waitFor(() => expect(screen.getByText(/add a date of birth/i)).toBeInTheDocument());
+    expect(api.fetchProfileSchedule).toHaveBeenCalledWith(1, "saved-token");
   });
 });

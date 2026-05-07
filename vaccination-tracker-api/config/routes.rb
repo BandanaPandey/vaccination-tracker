@@ -12,6 +12,9 @@ Rails.application.routes.draw do
       get "auth/me", to: "auth#me"
       delete "auth/logout", to: "auth#logout"
       resources :profiles, only: %i[index show create update destroy] do
+        member do
+          get :schedule, to: "profile_schedules#show"
+        end
         resources :vaccination_records, only: %i[index show create update destroy]
       end
       get :health, to: "health#show"

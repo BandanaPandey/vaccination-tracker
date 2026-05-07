@@ -7,6 +7,7 @@ import {
   deleteProfile,
   deleteVaccinationRecord,
   fetchCurrentUser,
+  fetchProfileSchedule,
   fetchVaccinationRecords,
   login,
   logout,
@@ -17,6 +18,8 @@ import {
   type CurrentUser,
   type Profile,
   type ProfileInput,
+  type ProfileSchedule,
+  type ScheduleStatus,
   type VaccinationRecord,
   type VaccinationRecordInput,
 } from "@/lib/api";
@@ -54,6 +57,7 @@ export function AuthShell() {
   const [authMetadata, setAuthMetadata] = useState<AuthMetadata | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [recordsByProfile, setRecordsByProfile] = useState<Record<number, VaccinationRecord[]>>({});
+  const [schedulesByProfile, setSchedulesByProfile] = useState<Record<number, ProfileSchedule>>({});
   const [activeProfileId, setActiveProfileId] = useState<number | null>(null);
   const [profileMode, setProfileMode] = useState<ProfileFormMode>("create");
   const [recordMode, setRecordMode] = useState<RecordFormMode>("create");
@@ -65,12 +69,15 @@ export function AuthShell() {
   const [signUpForm, setSignUpForm] = useState(emptySignUpForm);
   const [error, setError] = useState<string | null>(null);
   const [recordsError, setRecordsError] = useState<string | null>(null);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
   const [loadingRecords, setLoadingRecords] = useState(false);
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0] ?? null;
   const activeRecords = activeProfile ? recordsByProfile[activeProfile.id] ?? [] : [];
+  const activeSchedule = activeProfile ? schedulesByProfile[activeProfile.id] ?? null : null;
 
   useEffect(() => {
     let isMounted = true;
@@ -130,6 +137,34 @@ export function AuthShell() {
     };
   }, [token, activeProfileId]);
 
+  useEffect(() => {
+    if (!token || !activeProfileId) return;
+
+    let isMounted = true;
+
+    async function loadSchedule() {
+      setLoadingSchedule(true);
+      setScheduleError(null);
+
+      try {
+        const schedule = await fetchProfileSchedule(activeProfileId, token);
+        if (!isMounted) return;
+        setSchedulesByProfile((current) => ({ ...current, [activeProfileId]: schedule }));
+      } catch (loadError) {
+        if (!isMounted) return;
+        setScheduleError(loadError instanceof Error ? loadError.message : "Unable to load the vaccination schedule.");
+      } finally {
+        if (isMounted) setLoadingSchedule(false);
+      }
+    }
+
+    void loadSchedule();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token, activeProfileId]);
+
   function applySession(nextToken: string, user: CurrentUser, auth: AuthMetadata, nextProfiles: Profile[]) {
     const nextActiveProfileId = nextProfiles[0]?.id ?? null;
     window.localStorage.setItem(storageKey, nextToken);
@@ -145,8 +180,10 @@ export function AuthShell() {
     setEditingProfileId(null);
     setEditingRecordId(null);
     setRecordsByProfile({});
+    setSchedulesByProfile({});
     setError(null);
     setRecordsError(null);
+    setScheduleError(null);
   }
 
   function handleLogout() {
@@ -165,6 +202,7 @@ export function AuthShell() {
       setAuthMetadata(null);
       setProfiles([]);
       setRecordsByProfile({});
+      setSchedulesByProfile({});
       setActiveProfileId(null);
       setProfileMode("create");
       setRecordMode("create");
@@ -176,6 +214,7 @@ export function AuthShell() {
       setSignUpForm(emptySignUpForm);
       setError(null);
       setRecordsError(null);
+      setScheduleError(null);
     });
   }
 
@@ -218,6 +257,11 @@ export function AuthShell() {
           const updated = await updateProfile(editingProfileId, profileForm, token);
           setProfiles((current) => current.map((profile) => (profile.id === updated.id ? updated : profile)));
           setActiveProfileId(updated.id);
+          setSchedulesByProfile((current) => {
+            const next = { ...current };
+            delete next[updated.id];
+            return next;
+          });
         } else {
           const created = await createProfile(profileForm, token);
           setProfiles((current) => [...current, created]);
@@ -252,6 +296,11 @@ export function AuthShell() {
             [activeProfile.id]: [created, ...(current[activeProfile.id] ?? [])],
           }));
         }
+        setSchedulesByProfile((current) => {
+          const next = { ...current };
+          delete next[activeProfile.id];
+          return next;
+        });
         resetRecordComposer();
       } catch (recordError) {
         setRecordsError(recordError instanceof Error ? recordError.message : "Unable to save the vaccination record.");
@@ -304,6 +353,11 @@ export function AuthShell() {
           delete next[profileId];
           return next;
         });
+        setSchedulesByProfile((current) => {
+          const next = { ...current };
+          delete next[profileId];
+          return next;
+        });
 
         if (editingProfileId === profileId) resetProfileComposer();
       } catch (profileError) {
@@ -322,6 +376,11 @@ export function AuthShell() {
           ...current,
           [activeProfile.id]: (current[activeProfile.id] ?? []).filter((record) => record.id !== recordId),
         }));
+        setSchedulesByProfile((current) => {
+          const next = { ...current };
+          delete next[activeProfile.id];
+          return next;
+        });
 
         if (editingRecordId === recordId) resetRecordComposer();
       } catch (recordError) {
@@ -356,6 +415,8 @@ export function AuthShell() {
     setRecordForm((current) => ({ ...current, proof: file, remove_proof: false }));
   }
 
+  const schedulePreviewItems = getSchedulePreviewItems(activeSchedule);
+
   if (loadingSession) {
     return (
       <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#dbeafe,_#f8fafc_45%,_#ffffff_75%)] px-5 py-10">
@@ -378,7 +439,7 @@ export function AuthShell() {
                 <div>
                   <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">Welcome, {currentUser.name}</h1>
                   <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base">
-                    Manage family profiles and keep proof-backed vaccination history for the selected person in one responsive workspace.
+                    Manage family profiles, review schedule status, and keep proof-backed vaccination history for the selected person in one responsive workspace.
                   </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-4">
@@ -468,6 +529,47 @@ export function AuthShell() {
             </div>
 
             <div className="space-y-6">
+              <section className="rounded-[2rem] border border-cyan-100 bg-white/90 p-6 shadow-[0_18px_50px_rgba(8,145,178,0.1)] sm:p-8">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-semibold text-slate-950">Schedule preview</h2>
+                    <p className="mt-1 text-sm text-slate-600">Derived routine schedule for the active profile, ready for dashboard expansion in the next milestone.</p>
+                  </div>
+                  {loadingSchedule ? <span className="text-sm font-medium text-slate-500">Loading...</span> : null}
+                </div>
+                {scheduleError ? <p className="mt-4 text-sm text-rose-500">{scheduleError}</p> : null}
+                {activeProfile ? activeSchedule ? activeSchedule.missing_date_of_birth ? (
+                  <div className="mt-5 rounded-[1.4rem] border border-dashed border-amber-300 bg-amber-50 p-5 text-sm text-amber-900">
+                    Add a date of birth for {activeProfile.name} to generate the routine vaccination schedule preview.
+                  </div>
+                ) : (
+                  <>
+                    <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                      <ScheduleSummaryCard label="Completed" status="completed" count={activeSchedule.summary.completed} />
+                      <ScheduleSummaryCard label="Upcoming" status="upcoming" count={activeSchedule.summary.upcoming} />
+                      <ScheduleSummaryCard label="Overdue" status="overdue" count={activeSchedule.summary.overdue} />
+                    </div>
+                    <div className="mt-5 space-y-3">
+                      {schedulePreviewItems.map((item) => (
+                        <article key={item.schedule_key} className="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h3 className="text-sm font-semibold text-slate-950">{item.vaccine_name}</h3>
+                                <StatusPill status={item.status} />
+                              </div>
+                              <p className="mt-1 text-sm text-slate-600">{item.dose_label} due on {item.due_date}</p>
+                              <p className="mt-1 text-sm text-slate-600">Recommended window: {item.recommended_age_window}</p>
+                              {item.matched_record_date ? <p className="mt-1 text-sm text-emerald-700">Matched to recorded dose on {item.matched_record_date}</p> : null}
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </>
+                ) : <div className="mt-5 rounded-[1.4rem] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">Loading the active profile schedule.</div> : <div className="mt-5 rounded-[1.4rem] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">Select a profile to see the routine vaccination schedule.</div>}
+              </section>
+
               <section className="rounded-[2rem] border border-cyan-100 bg-white/90 p-6 shadow-[0_18px_50px_rgba(8,145,178,0.1)] sm:p-8">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -582,6 +684,29 @@ export function AuthShell() {
   );
 }
 
+function getSchedulePreviewItems(schedule: ProfileSchedule | null) {
+  if (!schedule) return [];
+
+  const prioritized = [...schedule.items].sort((left, right) => {
+    const rank = statusRank(left.status) - statusRank(right.status);
+    if (rank !== 0) return rank;
+    return left.due_date.localeCompare(right.due_date);
+  });
+
+  return prioritized.slice(0, 5);
+}
+
+function statusRank(status: ScheduleStatus) {
+  switch (status) {
+    case "overdue":
+      return 0;
+    case "upcoming":
+      return 1;
+    default:
+      return 2;
+  }
+}
+
 function AuthField({ label, value, onChange, placeholder, type = "text", required = true }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; type?: "text" | "email" | "password" | "date" | "number"; required?: boolean; }) {
   return (
     <label className="grid gap-2 text-sm">
@@ -636,6 +761,26 @@ function InfoCard({ label, value }: { label: string; value: string }) {
 
 function DetailCard({ label, value }: { label: string; value: string }) {
   return <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-semibold tracking-[0.16em] text-slate-500 uppercase">{label}</p><p className="mt-2 text-sm font-medium text-slate-900">{value}</p></div>;
+}
+
+function ScheduleSummaryCard({ label, status, count }: { label: string; status: ScheduleStatus; count: number }) {
+  const palette = status === "completed"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+    : status === "upcoming"
+      ? "border-sky-200 bg-sky-50 text-sky-900"
+      : "border-rose-200 bg-rose-50 text-rose-900";
+
+  return <div className={`rounded-[1.4rem] border p-4 ${palette}`}><p className="text-xs font-semibold tracking-[0.16em] uppercase">{label}</p><p className="mt-2 text-2xl font-semibold">{count}</p></div>;
+}
+
+function StatusPill({ status }: { status: ScheduleStatus }) {
+  const palette = status === "completed"
+    ? "bg-emerald-100 text-emerald-800"
+    : status === "upcoming"
+      ? "bg-sky-100 text-sky-800"
+      : "bg-rose-100 text-rose-800";
+
+  return <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${palette}`}>{status}</span>;
 }
 
 function capitalize(value: string) {

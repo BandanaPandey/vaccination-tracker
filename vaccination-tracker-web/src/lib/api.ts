@@ -37,6 +37,28 @@ export type Profile = {
   schedule_region: string;
 };
 
+export type ScheduleStatus = "completed" | "upcoming" | "overdue";
+
+export type ProfileScheduleItem = {
+  schedule_key: string;
+  vaccine_name: string;
+  dose_label: string;
+  due_date: string;
+  recommended_age_window: string;
+  status: ScheduleStatus;
+  matched_record_id: number | null;
+  matched_record_date: string | null;
+};
+
+export type ProfileSchedule = {
+  profile_id: number;
+  schedule_region: string;
+  generated_at: string;
+  missing_date_of_birth: boolean;
+  summary: Record<ScheduleStatus, number>;
+  items: ProfileScheduleItem[];
+};
+
 export type CurrentUser = {
   id: number;
   name: string;
@@ -262,4 +284,13 @@ export async function deleteVaccinationRecord(profileId: number, recordId: numbe
     method: "DELETE",
     headers: authHeaders(token),
   }).then((response) => parseJson<void>(response));
+}
+
+export async function fetchProfileSchedule(profileId: number, token: string) {
+  const apiBaseUrl = getApiBaseUrl();
+
+  return fetch(`${apiBaseUrl}/api/v1/profiles/${profileId}/schedule`, {
+    cache: "no-store",
+    headers: authHeaders(token),
+  }).then((response) => parseJson<ProfileSchedule>(response));
 }
