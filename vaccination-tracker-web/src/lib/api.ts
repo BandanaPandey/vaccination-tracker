@@ -59,6 +59,66 @@ export type ProfileSchedule = {
   items: ProfileScheduleItem[];
 };
 
+export type DashboardAttentionItem = ProfileScheduleItem & {
+  profile_id: number;
+  profile_name: string;
+  relationship_kind: Profile["relationship_kind"];
+  schedule_region: string;
+};
+
+export type DashboardProfile = {
+  id: number;
+  name: string;
+  relationship_kind: Profile["relationship_kind"];
+  schedule_region: string;
+  date_of_birth: string | null;
+  has_date_of_birth: boolean;
+  summary: Record<ScheduleStatus, number>;
+  next_items: ProfileScheduleItem[];
+};
+
+export type DashboardRecentActivity = {
+  id: number;
+  profile_id: number;
+  profile_name: string;
+  vaccine_name: string;
+  date_administered: string;
+  dose_number: number | null;
+  provider: string | null;
+  proof_attached: boolean;
+};
+
+export type DashboardResponse = {
+  generated_at: string;
+  family_summary: {
+    total_profiles: number;
+    completed: number;
+    upcoming: number;
+    overdue: number;
+  };
+  profiles: DashboardProfile[];
+  recent_activity: DashboardRecentActivity[];
+  attention_items: DashboardAttentionItem[];
+};
+
+export type CalendarDayItem = ProfileScheduleItem & {
+  profile_id: number;
+  profile_name: string;
+  relationship_kind: Profile["relationship_kind"];
+  schedule_region: string;
+};
+
+export type CalendarDay = {
+  date: string;
+  items: CalendarDayItem[];
+};
+
+export type CalendarResponse = {
+  month: string;
+  generated_at: string;
+  days: CalendarDay[];
+};
+
 export type CurrentUser = {
   id: number;
   name: string;
@@ -93,38 +153,22 @@ export type ProfileInput = {
 };
 
 function authHeaders(token?: string): Record<string, string> {
-  return token
-    ? {
-        Authorization: `Bearer ${token}`,
-      }
-    : {};
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 async function parseJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    const message =
-      typeof body?.error === "string"
-        ? body.error
-        : Array.isArray(body?.errors)
-          ? body.errors.join(", ")
-          : "Request failed.";
-
+    const message = typeof body?.error === "string" ? body.error : Array.isArray(body?.errors) ? body.errors.join(", ") : "Request failed.";
     throw new Error(message);
   }
 
-  if (response.status === 204 || response.status === 205) {
-    return undefined as T;
-  }
-
+  if (response.status === 204 || response.status === 205) return undefined as T;
   return response.json() as Promise<T>;
 }
 
 function appendIfPresent(formData: FormData, key: string, value: string | File | null | undefined) {
-  if (value === undefined || value === null || value === "") {
-    return;
-  }
-
+  if (value === undefined || value === null || value === "") return;
   formData.append(key, value);
 }
 
@@ -136,161 +180,81 @@ function buildVaccinationRecordFormData(input: VaccinationRecordInput) {
   appendIfPresent(formData, "vaccination_record[provider]", input.provider);
   appendIfPresent(formData, "vaccination_record[notes]", input.notes);
   appendIfPresent(formData, "vaccination_record[proof]", input.proof);
-
-  if (input.remove_proof) {
-    formData.append("vaccination_record[remove_proof]", "true");
-  }
-
+  if (input.remove_proof) formData.append("vaccination_record[remove_proof]", "true");
   return formData;
 }
 
-export async function signUp(input: {
-  name: string;
-  email: string;
-  password: string;
-  password_confirmation: string;
-}) {
+export async function signUp(input: { name: string; email: string; password: string; password_confirmation: string }) {
   const apiBaseUrl = getApiBaseUrl();
-
-  return fetch(`${apiBaseUrl}/api/v1/auth/signup`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      user: input,
-    }),
-  }).then((response) => parseJson<AuthResponse>(response));
+  return fetch(`${apiBaseUrl}/api/v1/auth/signup`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user: input }) }).then((response) => parseJson<AuthResponse>(response));
 }
 
 export async function login(input: { email: string; password: string }) {
   const apiBaseUrl = getApiBaseUrl();
-
-  return fetch(`${apiBaseUrl}/api/v1/auth/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      session: input,
-    }),
-  }).then((response) => parseJson<AuthResponse>(response));
+  return fetch(`${apiBaseUrl}/api/v1/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session: input }) }).then((response) => parseJson<AuthResponse>(response));
 }
 
 export async function fetchCurrentUser(token: string) {
   const apiBaseUrl = getApiBaseUrl();
-
-  return fetch(`${apiBaseUrl}/api/v1/auth/me`, {
-    cache: "no-store",
-    headers: authHeaders(token),
-  }).then((response) => parseJson<CurrentUserResponse>(response));
+  return fetch(`${apiBaseUrl}/api/v1/auth/me`, { cache: "no-store", headers: authHeaders(token) }).then((response) => parseJson<CurrentUserResponse>(response));
 }
 
 export async function logout(token: string) {
   const apiBaseUrl = getApiBaseUrl();
-
-  return fetch(`${apiBaseUrl}/api/v1/auth/logout`, {
-    method: "DELETE",
-    headers: authHeaders(token),
-  }).then((response) => parseJson<{ message: string }>(response));
+  return fetch(`${apiBaseUrl}/api/v1/auth/logout`, { method: "DELETE", headers: authHeaders(token) }).then((response) => parseJson<{ message: string }>(response));
 }
 
 export async function fetchProfiles(token: string) {
   const apiBaseUrl = getApiBaseUrl();
-
-  return fetch(`${apiBaseUrl}/api/v1/profiles`, {
-    cache: "no-store",
-    headers: authHeaders(token),
-  }).then((response) => parseJson<Profile[]>(response));
+  return fetch(`${apiBaseUrl}/api/v1/profiles`, { cache: "no-store", headers: authHeaders(token) }).then((response) => parseJson<Profile[]>(response));
 }
 
 export async function createProfile(input: ProfileInput, token: string) {
   const apiBaseUrl = getApiBaseUrl();
-
-  return fetch(`${apiBaseUrl}/api/v1/profiles`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(token),
-    },
-    body: JSON.stringify({
-      profile: input,
-    }),
-  }).then((response) => parseJson<Profile>(response));
+  return fetch(`${apiBaseUrl}/api/v1/profiles`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders(token) }, body: JSON.stringify({ profile: input }) }).then((response) => parseJson<Profile>(response));
 }
 
 export async function updateProfile(id: number, input: ProfileInput, token: string) {
   const apiBaseUrl = getApiBaseUrl();
-
-  return fetch(`${apiBaseUrl}/api/v1/profiles/${id}`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(token),
-    },
-    body: JSON.stringify({
-      profile: input,
-    }),
-  }).then((response) => parseJson<Profile>(response));
+  return fetch(`${apiBaseUrl}/api/v1/profiles/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json", ...authHeaders(token) }, body: JSON.stringify({ profile: input }) }).then((response) => parseJson<Profile>(response));
 }
 
 export async function deleteProfile(id: number, token: string) {
   const apiBaseUrl = getApiBaseUrl();
-
-  return fetch(`${apiBaseUrl}/api/v1/profiles/${id}`, {
-    method: "DELETE",
-    headers: authHeaders(token),
-  }).then((response) => parseJson<void>(response));
+  return fetch(`${apiBaseUrl}/api/v1/profiles/${id}`, { method: "DELETE", headers: authHeaders(token) }).then((response) => parseJson<void>(response));
 }
 
 export async function fetchVaccinationRecords(profileId: number, token: string) {
   const apiBaseUrl = getApiBaseUrl();
-
-  return fetch(`${apiBaseUrl}/api/v1/profiles/${profileId}/vaccination_records`, {
-    cache: "no-store",
-    headers: authHeaders(token),
-  }).then((response) => parseJson<VaccinationRecord[]>(response));
+  return fetch(`${apiBaseUrl}/api/v1/profiles/${profileId}/vaccination_records`, { cache: "no-store", headers: authHeaders(token) }).then((response) => parseJson<VaccinationRecord[]>(response));
 }
 
 export async function createVaccinationRecord(profileId: number, input: VaccinationRecordInput, token: string) {
   const apiBaseUrl = getApiBaseUrl();
-
-  return fetch(`${apiBaseUrl}/api/v1/profiles/${profileId}/vaccination_records`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: buildVaccinationRecordFormData(input),
-  }).then((response) => parseJson<VaccinationRecord>(response));
+  return fetch(`${apiBaseUrl}/api/v1/profiles/${profileId}/vaccination_records`, { method: "POST", headers: authHeaders(token), body: buildVaccinationRecordFormData(input) }).then((response) => parseJson<VaccinationRecord>(response));
 }
 
-export async function updateVaccinationRecord(
-  profileId: number,
-  recordId: number,
-  input: VaccinationRecordInput,
-  token: string,
-) {
+export async function updateVaccinationRecord(profileId: number, recordId: number, input: VaccinationRecordInput, token: string) {
   const apiBaseUrl = getApiBaseUrl();
-
-  return fetch(`${apiBaseUrl}/api/v1/profiles/${profileId}/vaccination_records/${recordId}`, {
-    method: "PATCH",
-    headers: authHeaders(token),
-    body: buildVaccinationRecordFormData(input),
-  }).then((response) => parseJson<VaccinationRecord>(response));
+  return fetch(`${apiBaseUrl}/api/v1/profiles/${profileId}/vaccination_records/${recordId}`, { method: "PATCH", headers: authHeaders(token), body: buildVaccinationRecordFormData(input) }).then((response) => parseJson<VaccinationRecord>(response));
 }
 
 export async function deleteVaccinationRecord(profileId: number, recordId: number, token: string) {
   const apiBaseUrl = getApiBaseUrl();
-
-  return fetch(`${apiBaseUrl}/api/v1/profiles/${profileId}/vaccination_records/${recordId}`, {
-    method: "DELETE",
-    headers: authHeaders(token),
-  }).then((response) => parseJson<void>(response));
+  return fetch(`${apiBaseUrl}/api/v1/profiles/${profileId}/vaccination_records/${recordId}`, { method: "DELETE", headers: authHeaders(token) }).then((response) => parseJson<void>(response));
 }
 
 export async function fetchProfileSchedule(profileId: number, token: string) {
   const apiBaseUrl = getApiBaseUrl();
+  return fetch(`${apiBaseUrl}/api/v1/profiles/${profileId}/schedule`, { cache: "no-store", headers: authHeaders(token) }).then((response) => parseJson<ProfileSchedule>(response));
+}
 
-  return fetch(`${apiBaseUrl}/api/v1/profiles/${profileId}/schedule`, {
-    cache: "no-store",
-    headers: authHeaders(token),
-  }).then((response) => parseJson<ProfileSchedule>(response));
+export async function fetchDashboard(token: string) {
+  const apiBaseUrl = getApiBaseUrl();
+  return fetch(`${apiBaseUrl}/api/v1/dashboard`, { cache: "no-store", headers: authHeaders(token) }).then((response) => parseJson<DashboardResponse>(response));
+}
+
+export async function fetchCalendar(month: string, token: string) {
+  const apiBaseUrl = getApiBaseUrl();
+  return fetch(`${apiBaseUrl}/api/v1/calendar?month=${encodeURIComponent(month)}`, { cache: "no-store", headers: authHeaders(token) }).then((response) => parseJson<CalendarResponse>(response));
 }

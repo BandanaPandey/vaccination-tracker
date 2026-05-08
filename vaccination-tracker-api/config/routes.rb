@@ -11,6 +11,8 @@ Rails.application.routes.draw do
       post "auth/login", to: "auth#login"
       get "auth/me", to: "auth#me"
       delete "auth/logout", to: "auth#logout"
+      get :dashboard, to: "dashboards#show"
+      get :calendar, to: "calendars#show"
       resources :profiles, only: %i[index show create update destroy] do
         member do
           get :schedule, to: "profile_schedules#show"
