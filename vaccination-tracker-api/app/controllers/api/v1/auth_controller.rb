@@ -89,7 +89,8 @@ module Api
         {
           id: user.id,
           name: user.name,
-          email: user.email
+          email: user.email,
+          phone_number: user.phone_number
         }
       end
     end

@@ -50,6 +50,21 @@ function calendarPayload(month = "2026-05"): api.CalendarResponse {
   };
 }
 
+function reminderPreferencePayload(overrides?: Partial<api.ReminderPreference>): api.ReminderPreference {
+  return {
+    email_enabled: true,
+    sms_enabled: false,
+    lead_days: 7,
+    overdue_enabled: true,
+    phone_number: null,
+    ...overrides,
+  };
+}
+
+function reminderDeliveryPayload(overrides?: Partial<api.ReminderDelivery>): api.ReminderDelivery[] {
+  return [{ id: 31, profile_id: 2, profile_name: "Aarav Pandey", channel: "email", status: "sent", kind: "overdue", vaccine_name: "DTaP", due_date: "2026-05-12", sent_at: "2026-05-08T09:00:00Z", error_message: null, ...overrides }];
+}
+
 describe("AuthShell", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -58,6 +73,8 @@ describe("AuthShell", () => {
     vi.spyOn(api, "fetchProfileSchedule").mockResolvedValue(schedulePayload({ missing_date_of_birth: true, items: [], summary: { completed: 0, upcoming: 0, overdue: 0 } }));
     vi.spyOn(api, "fetchDashboard").mockResolvedValue(dashboardPayload());
     vi.spyOn(api, "fetchCalendar").mockResolvedValue(calendarPayload());
+    vi.spyOn(api, "fetchReminderPreference").mockResolvedValue(reminderPreferencePayload());
+    vi.spyOn(api, "fetchReminderDeliveries").mockResolvedValue(reminderDeliveryPayload());
   });
 
   it("renders login mode by default", () => {
@@ -85,14 +102,15 @@ describe("AuthShell", () => {
 
   it("hydrates a saved session and shows the dashboard first", async () => {
     window.localStorage.setItem("vaccination-tracker-auth-token", "saved-token");
-    vi.spyOn(api, "fetchCurrentUser").mockResolvedValue({ user: { id: 1, name: "Bandana Pandey", email: "bandana@example.com" }, auth: { available_methods: ["password"], oauth_ready: true }, profiles: authPayload() });
+    vi.spyOn(api, "fetchCurrentUser").mockResolvedValue({ user: { id: 1, name: "Bandana Pandey", email: "bandana@example.com", phone_number: null }, auth: { available_methods: ["password"], oauth_ready: true }, profiles: authPayload() });
     render(<AuthShell />);
     await waitFor(() => expect(screen.getByText(/family overview/i)).toBeInTheDocument());
     expect(screen.getByText(/monthly calendar/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /reminder settings/i })).toBeInTheDocument();
   });
 
   it("renders authenticated dashboard after successful login", async () => {
-    vi.spyOn(api, "login").mockResolvedValue({ token: "new-token", user: { id: 2, name: "Priya Shah", email: "priya@example.com" }, auth: { available_methods: ["password"], oauth_ready: true }, profiles: authPayload({ name: "Priya Shah" }) });
+    vi.spyOn(api, "login").mockResolvedValue({ token: "new-token", user: { id: 2, name: "Priya Shah", email: "priya@example.com", phone_number: null }, auth: { available_methods: ["password"], oauth_ready: true }, profiles: authPayload({ name: "Priya Shah" }) });
     render(<AuthShell />);
     fireEvent.change(screen.getByLabelText(/email/i), { target: { value: "priya@example.com" } });
     fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: "password123" } });
@@ -101,9 +119,9 @@ describe("AuthShell", () => {
     expect(screen.getByText(/family overview/i)).toBeInTheDocument();
   });
 
-  it("renders family rollups, recent activity, attention items, and calendar data", async () => {
+  it("renders family rollups, recent activity, attention items, calendar data, and reminder history", async () => {
     window.localStorage.setItem("vaccination-tracker-auth-token", "saved-token");
-    vi.spyOn(api, "fetchCurrentUser").mockResolvedValue({ user: { id: 1, name: "Bandana Pandey", email: "bandana@example.com" }, auth: { available_methods: ["password"], oauth_ready: true }, profiles: [{ ...authPayload()[0], id: 1 }, { id: 2, name: "Aarav Pandey", date_of_birth: "2022-08-10", gender: "male", relationship_kind: "child", medical_notes: null, schedule_region: "US" }] });
+    vi.spyOn(api, "fetchCurrentUser").mockResolvedValue({ user: { id: 1, name: "Bandana Pandey", email: "bandana@example.com", phone_number: null }, auth: { available_methods: ["password"], oauth_ready: true }, profiles: [{ ...authPayload()[0], id: 1 }, { id: 2, name: "Aarav Pandey", date_of_birth: "2022-08-10", gender: "male", relationship_kind: "child", medical_notes: null, schedule_region: "US" }] });
     vi.spyOn(api, "fetchVaccinationRecords").mockResolvedValue(recordPayload());
     vi.spyOn(api, "fetchProfileSchedule").mockResolvedValue(schedulePayload());
 
@@ -114,11 +132,12 @@ describe("AuthShell", () => {
     expect(screen.getByText(/polio/i)).toBeInTheDocument();
     expect(screen.getAllByText(/dtap/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/selected day/i)).toBeInTheDocument();
+    expect(screen.getByText(/reminder history/i)).toBeInTheDocument();
   });
 
   it("navigates calendar months by reloading calendar data", async () => {
     window.localStorage.setItem("vaccination-tracker-auth-token", "saved-token");
-    vi.spyOn(api, "fetchCurrentUser").mockResolvedValue({ user: { id: 1, name: "Bandana Pandey", email: "bandana@example.com" }, auth: { available_methods: ["password"], oauth_ready: true }, profiles: authPayload({ date_of_birth: "1990-01-01" }) });
+    vi.spyOn(api, "fetchCurrentUser").mockResolvedValue({ user: { id: 1, name: "Bandana Pandey", email: "bandana@example.com", phone_number: null }, auth: { available_methods: ["password"], oauth_ready: true }, profiles: authPayload({ date_of_birth: "1990-01-01" }) });
     render(<AuthShell />);
     await waitFor(() => expect(screen.getByText(/monthly calendar/i)).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
@@ -127,7 +146,7 @@ describe("AuthShell", () => {
 
   it("keeps profile switching and vaccination record CRUD working inside the new layout", async () => {
     window.localStorage.setItem("vaccination-tracker-auth-token", "saved-token");
-    vi.spyOn(api, "fetchCurrentUser").mockResolvedValue({ user: { id: 1, name: "Bandana Pandey", email: "bandana@example.com" }, auth: { available_methods: ["password"], oauth_ready: true }, profiles: [{ ...authPayload()[0], date_of_birth: "1990-01-01" }, { id: 2, name: "Aarav Pandey", date_of_birth: "2022-08-10", gender: "male", relationship_kind: "child", medical_notes: null, schedule_region: "US" }] });
+    vi.spyOn(api, "fetchCurrentUser").mockResolvedValue({ user: { id: 1, name: "Bandana Pandey", email: "bandana@example.com", phone_number: null }, auth: { available_methods: ["password"], oauth_ready: true }, profiles: [{ ...authPayload()[0], date_of_birth: "1990-01-01" }, { id: 2, name: "Aarav Pandey", date_of_birth: "2022-08-10", gender: "male", relationship_kind: "child", medical_notes: null, schedule_region: "US" }] });
     vi.spyOn(api, "fetchVaccinationRecords").mockImplementation(async (profileId) => profileId === 1 ? recordPayload() : recordPayload({ id: 2, profile_id: 2, vaccine_name: "Polio", proof_attached: true, proof_filename: "proof.pdf", proof_content_type: "application/pdf", proof_url: "/rails/active_storage/blobs/proof" }));
     vi.spyOn(api, "fetchProfileSchedule").mockImplementation(async (profileId) => profileId === 1 ? schedulePayload({ profile_id: 1 }) : schedulePayload({ profile_id: 2, schedule_region: "US", items: [{ schedule_key: "dtap-1", vaccine_name: "DTaP", dose_label: "Dose 1", due_date: "2022-10-10", recommended_age_window: "2 months", status: "overdue", matched_record_id: null, matched_record_date: null }] }));
     vi.spyOn(api, "createVaccinationRecord").mockResolvedValue({ id: 3, profile_id: 1, vaccine_name: "Flu Shot", date_administered: "2025-01-12", dose_number: null, provider: "Metro Clinic", notes: "Annual dose", proof_attached: true, proof_filename: "flu-proof.pdf", proof_content_type: "application/pdf", proof_url: "/rails/active_storage/blobs/flu-proof" });
@@ -155,5 +174,59 @@ describe("AuthShell", () => {
     await waitFor(() => expect(screen.getAllByText(/polio/i).length).toBeGreaterThan(0));
     fireEvent.click(screen.getByRole("button", { name: /delete record/i }));
     await waitFor(() => expect(deleteRecordMock).toHaveBeenCalledWith(2, 2, "saved-token"));
+  });
+
+  it("saves reminder settings and updates the phone number", async () => {
+    window.localStorage.setItem("vaccination-tracker-auth-token", "saved-token");
+    vi.spyOn(api, "fetchCurrentUser").mockResolvedValue({ user: { id: 1, name: "Bandana Pandey", email: "bandana@example.com", phone_number: null }, auth: { available_methods: ["password"], oauth_ready: true }, profiles: authPayload({ date_of_birth: "1990-01-01" }) });
+    const updateReminderPreferenceMock = vi.spyOn(api, "updateReminderPreference").mockResolvedValue(reminderPreferencePayload({ sms_enabled: true, phone_number: "+15555550111", lead_days: 3 }));
+
+    render(<AuthShell />);
+    await waitFor(() => expect(screen.getByRole("heading", { name: /reminder settings/i })).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText(/mobile phone for sms/i), { target: { value: "+15555550111" } });
+    fireEvent.click(screen.getByLabelText(/sms reminders/i));
+    fireEvent.change(screen.getByLabelText(/lead time \(days\)/i), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: /save reminder settings/i }));
+
+    await waitFor(() => expect(updateReminderPreferenceMock).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText(/reminder settings saved/i)).toBeInTheDocument());
+    expect(screen.getByText("+15555550111")).toBeInTheDocument();
+  });
+
+  it("requires a phone number before enabling sms reminders", async () => {
+    window.localStorage.setItem("vaccination-tracker-auth-token", "saved-token");
+    vi.spyOn(api, "fetchCurrentUser").mockResolvedValue({ user: { id: 1, name: "Bandana Pandey", email: "bandana@example.com", phone_number: null }, auth: { available_methods: ["password"], oauth_ready: true }, profiles: authPayload({ date_of_birth: "1990-01-01" }) });
+    const updateReminderPreferenceMock = vi.spyOn(api, "updateReminderPreference");
+
+    render(<AuthShell />);
+    await waitFor(() => expect(screen.getByRole("heading", { name: /reminder settings/i })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText(/sms reminders/i));
+    fireEvent.click(screen.getByRole("button", { name: /save reminder settings/i }));
+
+    await waitFor(() => expect(screen.getByText(/add a phone number to enable sms reminders/i)).toBeInTheDocument());
+    expect(updateReminderPreferenceMock).not.toHaveBeenCalled();
+  });
+
+  it("runs reminders now and refreshes reminder history", async () => {
+    window.localStorage.setItem("vaccination-tracker-auth-token", "saved-token");
+    vi.spyOn(api, "fetchCurrentUser").mockResolvedValue({ user: { id: 1, name: "Bandana Pandey", email: "bandana@example.com", phone_number: "+15555550111" }, auth: { available_methods: ["password"], oauth_ready: true }, profiles: authPayload({ date_of_birth: "1990-01-01" }) });
+    vi.spyOn(api, "fetchReminderPreference").mockResolvedValue(reminderPreferencePayload({ phone_number: "+15555550111", sms_enabled: true }));
+    const fetchReminderDeliveriesMock = vi.spyOn(api, "fetchReminderDeliveries")
+      .mockResolvedValueOnce(reminderDeliveryPayload())
+      .mockResolvedValueOnce(reminderDeliveryPayload({ id: 32, channel: "sms", vaccine_name: "MMR" }));
+    const runRemindersNowMock = vi.spyOn(api, "runRemindersNow").mockResolvedValue({ generated_at: "2026-05-09T09:00:00Z", attempted: 2, sent: 2, failed: 0, skipped: 1, candidates: 1 });
+
+    render(<AuthShell />);
+    await waitFor(() => expect(screen.getByRole("heading", { name: /reminder settings/i })).toBeInTheDocument());
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /run reminders now/i })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: /run reminders now/i }));
+
+    await waitFor(() => expect(runRemindersNowMock).toHaveBeenCalledWith("saved-token"));
+    await waitFor(() => expect(fetchReminderDeliveriesMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByText(/2 sent, 0 failed, 1 skipped/i)).toBeInTheDocument());
+    expect(screen.getByText(/MMR/i)).toBeInTheDocument();
   });
 });

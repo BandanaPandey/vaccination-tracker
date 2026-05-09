@@ -119,10 +119,49 @@ export type CalendarResponse = {
   days: CalendarDay[];
 };
 
+export type ReminderPreference = {
+  email_enabled: boolean;
+  sms_enabled: boolean;
+  lead_days: number;
+  overdue_enabled: boolean;
+  phone_number: string | null;
+};
+
+export type ReminderPreferenceInput = {
+  email_enabled: boolean;
+  sms_enabled: boolean;
+  lead_days: string;
+  overdue_enabled: boolean;
+  phone_number: string;
+};
+
+export type ReminderDelivery = {
+  id: number;
+  profile_id: number;
+  profile_name: string;
+  channel: "email" | "sms";
+  status: "sent" | "failed";
+  kind: "upcoming" | "overdue";
+  vaccine_name: string;
+  due_date: string;
+  sent_at: string;
+  error_message: string | null;
+};
+
+export type ReminderRunResponse = {
+  generated_at: string;
+  attempted: number;
+  sent: number;
+  failed: number;
+  skipped: number;
+  candidates: number;
+};
+
 export type CurrentUser = {
   id: number;
   name: string;
   email: string;
+  phone_number: string | null;
 };
 
 export type AuthMetadata = {
@@ -257,4 +296,36 @@ export async function fetchDashboard(token: string) {
 export async function fetchCalendar(month: string, token: string) {
   const apiBaseUrl = getApiBaseUrl();
   return fetch(`${apiBaseUrl}/api/v1/calendar?month=${encodeURIComponent(month)}`, { cache: "no-store", headers: authHeaders(token) }).then((response) => parseJson<CalendarResponse>(response));
+}
+
+export async function fetchReminderPreference(token: string) {
+  const apiBaseUrl = getApiBaseUrl();
+  return fetch(`${apiBaseUrl}/api/v1/reminder_preferences`, { cache: "no-store", headers: authHeaders(token) }).then((response) => parseJson<ReminderPreference>(response));
+}
+
+export async function updateReminderPreference(input: ReminderPreferenceInput, token: string) {
+  const apiBaseUrl = getApiBaseUrl();
+  return fetch(`${apiBaseUrl}/api/v1/reminder_preferences`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({
+      reminder_preference: {
+        email_enabled: input.email_enabled,
+        sms_enabled: input.sms_enabled,
+        lead_days: Number(input.lead_days || 0),
+        overdue_enabled: input.overdue_enabled,
+        phone_number: input.phone_number,
+      },
+    }),
+  }).then((response) => parseJson<ReminderPreference>(response));
+}
+
+export async function fetchReminderDeliveries(token: string) {
+  const apiBaseUrl = getApiBaseUrl();
+  return fetch(`${apiBaseUrl}/api/v1/reminder_deliveries`, { cache: "no-store", headers: authHeaders(token) }).then((response) => parseJson<ReminderDelivery[]>(response));
+}
+
+export async function runRemindersNow(token: string) {
+  const apiBaseUrl = getApiBaseUrl();
+  return fetch(`${apiBaseUrl}/api/v1/reminders/run`, { method: "POST", headers: authHeaders(token) }).then((response) => parseJson<ReminderRunResponse>(response));
 }

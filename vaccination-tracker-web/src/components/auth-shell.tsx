@@ -10,11 +10,15 @@ import {
   fetchCurrentUser,
   fetchDashboard,
   fetchProfileSchedule,
+  fetchReminderDeliveries,
+  fetchReminderPreference,
   fetchVaccinationRecords,
   login,
   logout,
+  runRemindersNow,
   signUp,
   updateProfile,
+  updateReminderPreference,
   updateVaccinationRecord,
   type AuthMetadata,
   type CalendarDay,
@@ -24,6 +28,8 @@ import {
   type Profile,
   type ProfileInput,
   type ProfileSchedule,
+  type ReminderDelivery,
+  type ReminderPreferenceInput,
   type ScheduleStatus,
   type VaccinationRecord,
   type VaccinationRecordInput,
@@ -39,6 +45,7 @@ const emptyLoginForm = { email: "", password: "" };
 const emptySignUpForm = { name: "", email: "", password: "", password_confirmation: "" };
 const emptyProfileForm: ProfileInput = { name: "", date_of_birth: "", gender: "", relationship_kind: "child", medical_notes: "", schedule_region: "IN" };
 const emptyRecordForm: VaccinationRecordInput = { vaccine_name: "", date_administered: "", dose_number: "", provider: "", notes: "", proof: null, remove_proof: false };
+const emptyReminderForm: ReminderPreferenceInput = { email_enabled: true, sms_enabled: false, lead_days: "7", overdue_enabled: true, phone_number: "" };
 
 export function AuthShell() {
   const [mode, setMode] = useState<AuthMode>("login");
@@ -57,6 +64,8 @@ export function AuthShell() {
   const [recordMode, setRecordMode] = useState<RecordFormMode>("create");
   const [profileForm, setProfileForm] = useState<ProfileInput>(emptyProfileForm);
   const [recordForm, setRecordForm] = useState<VaccinationRecordInput>(emptyRecordForm);
+  const [reminderForm, setReminderForm] = useState<ReminderPreferenceInput>(emptyReminderForm);
+  const [reminderDeliveries, setReminderDeliveries] = useState<ReminderDelivery[]>([]);
   const [editingProfileId, setEditingProfileId] = useState<number | null>(null);
   const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
   const [loginForm, setLoginForm] = useState(emptyLoginForm);
@@ -66,11 +75,16 @@ export function AuthShell() {
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [calendarError, setCalendarError] = useState<string | null>(null);
+  const [reminderError, setReminderError] = useState<string | null>(null);
+  const [reminderHistoryError, setReminderHistoryError] = useState<string | null>(null);
+  const [reminderNotice, setReminderNotice] = useState<string | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
   const [loadingRecords, setLoadingRecords] = useState(false);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
   const [loadingCalendar, setLoadingCalendar] = useState(false);
+  const [loadingReminderPreferences, setLoadingReminderPreferences] = useState(false);
+  const [loadingReminderDeliveries, setLoadingReminderDeliveries] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0] ?? null;
@@ -198,6 +212,49 @@ export function AuthShell() {
     return () => { isMounted = false; };
   }, [token, calendarMonth]);
 
+  useEffect(() => {
+    if (!token) return;
+    let isMounted = true;
+
+    async function loadReminderCenter() {
+      setLoadingReminderPreferences(true);
+      setLoadingReminderDeliveries(true);
+      setReminderError(null);
+      setReminderHistoryError(null);
+
+      try {
+        const [preference, deliveries] = await Promise.all([
+          fetchReminderPreference(token),
+          fetchReminderDeliveries(token),
+        ]);
+
+        if (!isMounted) return;
+        setReminderForm({
+          email_enabled: preference.email_enabled,
+          sms_enabled: preference.sms_enabled,
+          lead_days: String(preference.lead_days),
+          overdue_enabled: preference.overdue_enabled,
+          phone_number: preference.phone_number ?? "",
+        });
+        setReminderDeliveries(deliveries);
+        setCurrentUser((current) => current ? { ...current, phone_number: preference.phone_number } : current);
+      } catch (loadError) {
+        if (!isMounted) return;
+        const message = loadError instanceof Error ? loadError.message : "Unable to load reminder settings.";
+        setReminderError(message);
+        setReminderHistoryError(message);
+      } finally {
+        if (isMounted) {
+          setLoadingReminderPreferences(false);
+          setLoadingReminderDeliveries(false);
+        }
+      }
+    }
+
+    void loadReminderCenter();
+    return () => { isMounted = false; };
+  }, [token]);
+
   function applySession(nextToken: string, user: CurrentUser, auth: AuthMetadata, nextProfiles: Profile[]) {
     const nextActiveProfileId = nextProfiles[0]?.id ?? null;
     window.localStorage.setItem(storageKey, nextToken);
@@ -208,6 +265,8 @@ export function AuthShell() {
     setActiveProfileId(nextActiveProfileId);
     setProfileForm(emptyProfileForm);
     setRecordForm(emptyRecordForm);
+    setReminderForm(emptyReminderForm);
+    setReminderDeliveries([]);
     setProfileMode("create");
     setRecordMode("create");
     setEditingProfileId(null);
@@ -223,6 +282,9 @@ export function AuthShell() {
     setScheduleError(null);
     setDashboardError(null);
     setCalendarError(null);
+    setReminderError(null);
+    setReminderHistoryError(null);
+    setReminderNotice(null);
   }
 
   async function refreshDashboardAndCalendar(nextMonth?: string) {
@@ -247,6 +309,37 @@ export function AuthShell() {
     }
   }
 
+  async function refreshReminderCenter() {
+    if (!token) return;
+    setLoadingReminderPreferences(true);
+    setLoadingReminderDeliveries(true);
+    setReminderError(null);
+    setReminderHistoryError(null);
+
+    try {
+      const [preference, deliveries] = await Promise.all([
+        fetchReminderPreference(token),
+        fetchReminderDeliveries(token),
+      ]);
+      setReminderForm({
+        email_enabled: preference.email_enabled,
+        sms_enabled: preference.sms_enabled,
+        lead_days: String(preference.lead_days),
+        overdue_enabled: preference.overdue_enabled,
+        phone_number: preference.phone_number ?? "",
+      });
+      setReminderDeliveries(deliveries);
+      setCurrentUser((current) => current ? { ...current, phone_number: preference.phone_number } : current);
+    } catch (loadError) {
+      const message = loadError instanceof Error ? loadError.message : "Unable to refresh reminder settings.";
+      setReminderError(message);
+      setReminderHistoryError(message);
+    } finally {
+      setLoadingReminderPreferences(false);
+      setLoadingReminderDeliveries(false);
+    }
+  }
+
   function handleLogout() {
     startTransition(async () => {
       if (token) {
@@ -255,8 +348,9 @@ export function AuthShell() {
       window.localStorage.removeItem(storageKey);
       setToken(null); setCurrentUser(null); setAuthMetadata(null); setProfiles([]); setRecordsByProfile({}); setSchedulesByProfile({});
       setDashboard(null); setCalendar(null); setSelectedCalendarDate(null); setActiveProfileId(null); setProfileMode("create"); setRecordMode("create");
-      setEditingProfileId(null); setEditingRecordId(null); setProfileForm(emptyProfileForm); setRecordForm(emptyRecordForm); setLoginForm(emptyLoginForm); setSignUpForm(emptySignUpForm);
-      setError(null); setRecordsError(null); setScheduleError(null); setDashboardError(null); setCalendarError(null);
+      setEditingProfileId(null); setEditingRecordId(null); setProfileForm(emptyProfileForm); setRecordForm(emptyRecordForm); setReminderForm(emptyReminderForm); setReminderDeliveries([]);
+      setLoginForm(emptyLoginForm); setSignUpForm(emptySignUpForm);
+      setError(null); setRecordsError(null); setScheduleError(null); setDashboardError(null); setCalendarError(null); setReminderError(null); setReminderHistoryError(null); setReminderNotice(null);
     });
   }
 
@@ -328,6 +422,51 @@ export function AuthShell() {
         resetRecordComposer();
       } catch (recordError) {
         setRecordsError(recordError instanceof Error ? recordError.message : "Unable to save the vaccination record.");
+      }
+    });
+  }
+
+  function handleReminderSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) return;
+    setReminderError(null);
+    setReminderNotice(null);
+
+    if (reminderForm.sms_enabled && !reminderForm.phone_number.trim()) {
+      setReminderError("Add a phone number to enable SMS reminders.");
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        const preference = await updateReminderPreference(reminderForm, token);
+        setReminderForm({
+          email_enabled: preference.email_enabled,
+          sms_enabled: preference.sms_enabled,
+          lead_days: String(preference.lead_days),
+          overdue_enabled: preference.overdue_enabled,
+          phone_number: preference.phone_number ?? "",
+        });
+        setCurrentUser((current) => current ? { ...current, phone_number: preference.phone_number } : current);
+        setReminderNotice("Reminder settings saved.");
+      } catch (saveError) {
+        setReminderError(saveError instanceof Error ? saveError.message : "Unable to save reminder settings.");
+      }
+    });
+  }
+
+  function handleRunReminders() {
+    if (!token) return;
+    setReminderError(null);
+    setReminderNotice(null);
+
+    startTransition(async () => {
+      try {
+        const result = await runRemindersNow(token);
+        await refreshReminderCenter();
+        setReminderNotice(`Reminder run finished: ${result.sent} sent, ${result.failed} failed, ${result.skipped} skipped.`);
+      } catch (runError) {
+        setReminderError(runError instanceof Error ? runError.message : "Unable to run reminders right now.");
       }
     });
   }
@@ -416,10 +555,11 @@ export function AuthShell() {
                 <span className="inline-flex rounded-full bg-cyan-100 px-3 py-1 text-sm font-semibold text-cyan-800">Family vaccination dashboard</span>
                 <div>
                   <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">Welcome, {currentUser.name}</h1>
-                  <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base">Track your whole household’s vaccine progress, review urgent schedule items, and manage individual proof-backed records from one responsive workspace.</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base">Track your whole household’s vaccine progress, review urgent schedule items, manage proof-backed records, and configure reminder delivery from one responsive workspace.</p>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-4">
+                <div className="grid gap-3 sm:grid-cols-5">
                   <InfoCard label="Account email" value={currentUser.email} />
+                  <InfoCard label="SMS phone" value={currentUser.phone_number || "Not set"} />
                   <InfoCard label="Profiles tracked" value={String(dashboard?.family_summary.total_profiles ?? profiles.length)} />
                   <InfoCard label="Overdue doses" value={String(dashboard?.family_summary.overdue ?? 0)} tone="rose" />
                   <InfoCard label="OAuth readiness" value={authMetadata?.oauth_ready ? "Provider model ready" : "Password only"} />
@@ -537,9 +677,9 @@ export function AuthShell() {
                 {calendarError ? <p className="mt-4 text-sm text-rose-500">{calendarError}</p> : null}
                 <div className="mt-5 overflow-x-auto">
                   <div className="grid min-w-[720px] grid-cols-7 gap-3">
-                    {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((weekday) => <p key={weekday} className="px-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{weekday}</p>)}
-                    {buildCalendarCells(calendarDays).map((cell) => cell ? (
-                      <button key={cell.date} type="button" onClick={() => setSelectedCalendarDate(cell.date)} className={`min-h-[120px] rounded-[1.2rem] border p-3 text-left transition ${selectedCalendarDate === cell.date ? 'border-cyan-300 bg-cyan-50 shadow-[0_10px_24px_rgba(8,145,178,0.1)]' : 'border-slate-200 bg-slate-50 hover:border-cyan-200 hover:bg-white'}`}>
+                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((weekday) => <p key={weekday} className="px-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{weekday}</p>)}
+                    {buildCalendarCells(calendarDays).map((cell, index) => cell ? (
+                      <button key={cell.date} type="button" onClick={() => setSelectedCalendarDate(cell.date)} className={`min-h-[120px] rounded-[1.2rem] border p-3 text-left transition ${selectedCalendarDate === cell.date ? "border-cyan-300 bg-cyan-50 shadow-[0_10px_24px_rgba(8,145,178,0.1)]" : "border-slate-200 bg-slate-50 hover:border-cyan-200 hover:bg-white"}`}>
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-sm font-semibold text-slate-950">{cell.date.slice(-2)}</span>
                           {cell.items.length > 0 ? <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-slate-600">{cell.items.length}</span> : null}
@@ -549,7 +689,7 @@ export function AuthShell() {
                           {cell.items.length > 2 ? <p className="text-xs text-slate-500">+{cell.items.length - 2} more</p> : null}
                         </div>
                       </button>
-                    ) : <div key={`blank-${Math.random()}`} className="min-h-[120px] rounded-[1.2rem] border border-transparent" />)}
+                    ) : <div key={`blank-${index}`} className="min-h-[120px] rounded-[1.2rem] border border-transparent" />)}
                   </div>
                 </div>
                 <div className="mt-5 rounded-[1.4rem] border border-slate-200 bg-slate-50 p-5">
@@ -610,6 +750,60 @@ export function AuthShell() {
               <section className="rounded-[2rem] bg-slate-950 p-6 text-slate-50 shadow-[0_24px_80px_rgba(15,23,42,0.28)] sm:p-8">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
+                    <h2 className="text-2xl font-semibold text-white">Reminder settings</h2>
+                    <p className="mt-1 text-sm text-slate-300">Configure family-wide email and SMS reminders for upcoming and overdue vaccines.</p>
+                  </div>
+                  <button type="button" onClick={handleRunReminders} disabled={isPending || loadingReminderPreferences || loadingReminderDeliveries} className="rounded-full border border-cyan-100/40 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-70">{isPending ? "Running..." : "Run reminders now"}</button>
+                </div>
+                <form className="mt-8 grid gap-4" onSubmit={handleReminderSubmit}>
+                  <AuthField label="Mobile phone for SMS" value={reminderForm.phone_number} onChange={(value) => setReminderForm((current) => ({ ...current, phone_number: value }))} placeholder="+1 555 555 0111" required={false} />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <CheckboxField label="Email reminders" checked={reminderForm.email_enabled} onChange={(checked) => setReminderForm((current) => ({ ...current, email_enabled: checked }))} />
+                    <CheckboxField label="SMS reminders" checked={reminderForm.sms_enabled} onChange={(checked) => setReminderForm((current) => ({ ...current, sms_enabled: checked }))} />
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <AuthField label="Lead time (days)" type="number" value={reminderForm.lead_days} onChange={(value) => setReminderForm((current) => ({ ...current, lead_days: value }))} placeholder="7" />
+                    <CheckboxField label="Overdue reminders" checked={reminderForm.overdue_enabled} onChange={(checked) => setReminderForm((current) => ({ ...current, overdue_enabled: checked }))} />
+                  </div>
+                  {reminderForm.sms_enabled && !reminderForm.phone_number.trim() ? <p className="text-sm text-amber-300">Add a phone number before enabling SMS delivery.</p> : <p className="text-sm text-slate-400">Email sends to {currentUser.email}. SMS sends to the account phone number above.</p>}
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <button type="submit" disabled={isPending || loadingReminderPreferences} className="rounded-full bg-cyan-100 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-70">{isPending ? "Saving settings..." : "Save reminder settings"}</button>
+                  </div>
+                </form>
+                {loadingReminderPreferences ? <p className="mt-4 text-sm text-slate-300">Loading reminder settings...</p> : null}
+                {reminderError ? <p className="mt-4 text-sm text-rose-300">{reminderError}</p> : null}
+                {reminderNotice ? <p className="mt-4 text-sm text-emerald-300">{reminderNotice}</p> : null}
+              </section>
+
+              <section className="rounded-[2rem] border border-cyan-100 bg-white/90 p-6 shadow-[0_18px_50px_rgba(8,145,178,0.1)] sm:p-8">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-semibold text-slate-950">Reminder history</h2>
+                    <p className="mt-1 text-sm text-slate-600">Recent reminder deliveries across all profiles and channels.</p>
+                  </div>
+                  {loadingReminderDeliveries ? <span className="text-sm font-medium text-slate-500">Loading...</span> : null}
+                </div>
+                {reminderHistoryError ? <p className="mt-4 text-sm text-rose-500">{reminderHistoryError}</p> : null}
+                <div className="mt-5 space-y-3">
+                  {reminderDeliveries.length > 0 ? reminderDeliveries.map((delivery) => (
+                    <article key={delivery.id} className="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-950">{delivery.profile_name} · {delivery.vaccine_name}</p>
+                          <p className="mt-1 text-sm text-slate-600">{capitalize(delivery.kind)} reminder via {delivery.channel.toUpperCase()} · Due {delivery.due_date}</p>
+                          <p className="mt-1 text-sm text-slate-500">Sent {formatTimestamp(delivery.sent_at)}</p>
+                          {delivery.error_message ? <p className="mt-1 text-sm text-rose-600">{delivery.error_message}</p> : null}
+                        </div>
+                        <DeliveryStatusPill status={delivery.status} />
+                      </div>
+                    </article>
+                  )) : <EmptyState text="No reminder deliveries yet. Run reminders now or wait for the first due dose window." />}
+                </div>
+              </section>
+
+              <section className="rounded-[2rem] bg-slate-950 p-6 text-slate-50 shadow-[0_24px_80px_rgba(15,23,42,0.28)] sm:p-8">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
                     <h2 className="text-2xl font-semibold text-white">{profileMode === "edit" ? "Edit profile" : "Create family profile"}</h2>
                     <p className="mt-1 text-sm text-slate-300">Keep self, child, and dependent details current while their vaccination history grows.</p>
                   </div>
@@ -653,23 +847,25 @@ export function AuthShell() {
 }
 
 function getCurrentMonthKey() { return new Date().toISOString().slice(0, 7); }
-function shiftMonth(month: string, delta: number) { const [year, value] = month.split('-').map(Number); const date = new Date(year, value - 1 + delta, 1); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`; }
-function formatMonthLabel(month: string) { const [year, value] = month.split('-').map(Number); return new Date(year, value - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }); }
+function shiftMonth(month: string, delta: number) { const [year, value] = month.split("-").map(Number); const date = new Date(year, value - 1 + delta, 1); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`; }
+function formatMonthLabel(month: string) { const [year, value] = month.split("-").map(Number); return new Date(year, value - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" }); }
+function formatTimestamp(value: string) { return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }); }
 function getSchedulePreviewItems(schedule: ProfileSchedule | null) { if (!schedule) return []; return [...schedule.items].sort((left, right) => { const rank = statusRank(left.status) - statusRank(right.status); if (rank !== 0) return rank; return left.due_date.localeCompare(right.due_date); }).slice(0, 5); }
-function statusRank(status: ScheduleStatus) { switch (status) { case 'overdue': return 0; case 'upcoming': return 1; default: return 2; } }
+function statusRank(status: ScheduleStatus) { switch (status) { case "overdue": return 0; case "upcoming": return 1; default: return 2; } }
 function buildCalendarCells(days: CalendarDay[]) { if (days.length === 0) return []; const firstDate = new Date(`${days[0].date}T00:00:00`); const blanks = Array.from({ length: firstDate.getDay() }, () => null); return [...blanks, ...days]; }
-function pillClass(status: ScheduleStatus) { return status === 'completed' ? 'bg-emerald-100 text-emerald-800' : status === 'upcoming' ? 'bg-sky-100 text-sky-800' : 'bg-rose-100 text-rose-800'; }
+function pillClass(status: ScheduleStatus) { return status === "completed" ? "bg-emerald-100 text-emerald-800" : status === "upcoming" ? "bg-sky-100 text-sky-800" : "bg-rose-100 text-rose-800"; }
 
 function AuthField({ label, value, onChange, placeholder, type = "text", required = true }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; type?: "text" | "email" | "password" | "date" | "number"; required?: boolean; }) { return <label className="grid gap-2 text-sm"><span className="text-slate-200">{label}</span><input type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className="rounded-[1.1rem] border border-white/15 bg-white/8 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-400 focus:border-cyan-100 focus:bg-white/12" required={required} /></label>; }
 function TextAreaField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder: string; }) { return <label className="grid gap-2 text-sm"><span className="text-slate-200">{label}</span><textarea value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} rows={4} className="rounded-[1.1rem] border border-white/15 bg-white/8 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-400 focus:border-cyan-100 focus:bg-white/12" /></label>; }
 function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: Array<{ label: string; value: string }>; }) { return <label className="grid gap-2 text-sm"><span className="text-slate-200">{label}</span><select value={value} onChange={(event) => onChange(event.target.value)} className="rounded-[1.1rem] border border-white/15 bg-slate-900 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-100">{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>; }
 function FileField({ label, onChange, helperText }: { label: string; onChange: (event: ChangeEvent<HTMLInputElement>) => void; helperText: string; }) { return <label className="grid gap-2 text-sm"><span className="text-slate-200">{label}</span><input type="file" accept="image/*,application/pdf" onChange={onChange} className="rounded-[1.1rem] border border-white/15 bg-white/8 px-4 py-3 text-sm text-white outline-none transition file:mr-4 file:rounded-full file:border-0 file:bg-cyan-100 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-slate-950 hover:file:bg-cyan-50" /><span className="text-xs text-slate-400">{helperText}</span></label>; }
 function CheckboxField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void; }) { return <label className="flex items-center gap-3 text-sm text-slate-200"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-cyan-500 focus:ring-cyan-400" /><span>{label}</span></label>; }
-function InfoCard({ label, value, tone = 'slate' }: { label: string; value: string; tone?: 'slate' | 'rose' }) { const palette = tone === 'rose' ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-slate-50'; return <div className={`rounded-[1.4rem] border p-4 ${palette}`}><p className="text-xs font-semibold tracking-[0.16em] text-slate-500 uppercase">{label}</p><p className="mt-2 text-sm font-medium text-slate-900">{value}</p></div>; }
+function InfoCard({ label, value, tone = "slate" }: { label: string; value: string; tone?: "slate" | "rose" }) { const palette = tone === "rose" ? "border-rose-200 bg-rose-50" : "border-slate-200 bg-slate-50"; return <div className={`rounded-[1.4rem] border p-4 ${palette}`}><p className="text-xs font-semibold tracking-[0.16em] text-slate-500 uppercase">{label}</p><p className="mt-2 text-sm font-medium text-slate-900">{value}</p></div>; }
 function DetailCard({ label, value }: { label: string; value: string }) { return <div className="rounded-[1.4rem] border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-semibold tracking-[0.16em] text-slate-500 uppercase">{label}</p><p className="mt-2 text-sm font-medium text-slate-900">{value}</p></div>; }
-function ScheduleSummaryCard({ label, status, count }: { label: string; status: ScheduleStatus; count: number }) { const palette = status === 'completed' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : status === 'upcoming' ? 'border-sky-200 bg-sky-50 text-sky-900' : 'border-rose-200 bg-rose-50 text-rose-900'; return <div className={`rounded-[1.4rem] border p-4 ${palette}`}><p className="text-xs font-semibold tracking-[0.16em] uppercase">{label}</p><p className="mt-2 text-2xl font-semibold">{count}</p></div>; }
-function SummaryCard({ label, count, tone }: { label: string; count: number; tone: 'slate' | 'emerald' | 'sky' | 'rose' }) { const palette = tone === 'emerald' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : tone === 'sky' ? 'border-sky-200 bg-sky-50 text-sky-900' : tone === 'rose' ? 'border-rose-200 bg-rose-50 text-rose-900' : 'border-slate-200 bg-slate-50 text-slate-900'; return <div className={`rounded-[1.4rem] border p-4 ${palette}`}><p className="text-xs font-semibold tracking-[0.16em] uppercase">{label}</p><p className="mt-2 text-3xl font-semibold">{count}</p></div>; }
-function MiniMetric({ label, value, tone }: { label: string; value: number; tone: 'emerald' | 'sky' | 'rose' }) { const palette = tone === 'emerald' ? 'bg-emerald-100 text-emerald-800' : tone === 'sky' ? 'bg-sky-100 text-sky-800' : 'bg-rose-100 text-rose-800'; return <div className={`rounded-full px-3 py-2 text-center text-xs font-semibold ${palette}`}>{label}: {value}</div>; }
+function ScheduleSummaryCard({ label, status, count }: { label: string; status: ScheduleStatus; count: number }) { const palette = status === "completed" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : status === "upcoming" ? "border-sky-200 bg-sky-50 text-sky-900" : "border-rose-200 bg-rose-50 text-rose-900"; return <div className={`rounded-[1.4rem] border p-4 ${palette}`}><p className="text-xs font-semibold tracking-[0.16em] uppercase">{label}</p><p className="mt-2 text-2xl font-semibold">{count}</p></div>; }
+function SummaryCard({ label, count, tone }: { label: string; count: number; tone: "slate" | "emerald" | "sky" | "rose" }) { const palette = tone === "emerald" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : tone === "sky" ? "border-sky-200 bg-sky-50 text-sky-900" : tone === "rose" ? "border-rose-200 bg-rose-50 text-rose-900" : "border-slate-200 bg-slate-50 text-slate-900"; return <div className={`rounded-[1.4rem] border p-4 ${palette}`}><p className="text-xs font-semibold tracking-[0.16em] uppercase">{label}</p><p className="mt-2 text-3xl font-semibold">{count}</p></div>; }
+function MiniMetric({ label, value, tone }: { label: string; value: number; tone: "emerald" | "sky" | "rose" }) { const palette = tone === "emerald" ? "bg-emerald-100 text-emerald-800" : tone === "sky" ? "bg-sky-100 text-sky-800" : "bg-rose-100 text-rose-800"; return <div className={`rounded-full px-3 py-2 text-center text-xs font-semibold ${palette}`}>{label}: {value}</div>; }
 function StatusPill({ status }: { status: ScheduleStatus }) { return <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${pillClass(status)}`}>{status}</span>; }
+function DeliveryStatusPill({ status }: { status: ReminderDelivery["status"] }) { const palette = status === "sent" ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"; return <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] ${palette}`}>{status}</span>; }
 function EmptyState({ text }: { text: string }) { return <div className="rounded-[1.4rem] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">{text}</div>; }
 function capitalize(value: string) { return value.charAt(0).toUpperCase() + value.slice(1); }

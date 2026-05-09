@@ -1,0 +1,10 @@
+Vaccination Tracker reminder
+
+Profile: <%= @candidate.fetch(:profile_name) %>
+Vaccine: <%= @candidate.fetch(:vaccine_name) %>
+Dose: <%= @candidate.fetch(:dose_label) %>
+Reminder type: <%= @candidate.fetch(:kind) %>
+Due date: <%= @candidate.fetch(:due_date) %>
+Region: <%= @candidate.fetch(:schedule_region) %>
+
+Open Vaccination Tracker to review the family dashboard and update the vaccination record once it is completed.

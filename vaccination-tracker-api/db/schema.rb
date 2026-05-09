@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_06_034500) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_09_093000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -68,11 +68,41 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_034500) do
     t.index ["user_id"], name: "index_profiles_on_user_id"
   end
 
+  create_table "reminder_deliveries", force: :cascade do |t|
+    t.string "channel", null: false
+    t.datetime "created_at", null: false
+    t.date "due_date", null: false
+    t.text "error_message"
+    t.string "kind", null: false
+    t.bigint "profile_id", null: false
+    t.string "schedule_key", null: false
+    t.datetime "sent_at", null: false
+    t.string "status", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.string "vaccine_name", null: false
+    t.index ["profile_id"], name: "index_reminder_deliveries_on_profile_id"
+    t.index ["user_id", "profile_id", "channel", "schedule_key", "due_date", "kind", "sent_at"], name: "index_reminder_deliveries_on_dedupe_fields"
+    t.index ["user_id"], name: "index_reminder_deliveries_on_user_id"
+  end
+
+  create_table "reminder_preferences", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.boolean "email_enabled", default: true, null: false
+    t.integer "lead_days", default: 7, null: false
+    t.boolean "overdue_enabled", default: true, null: false
+    t.boolean "sms_enabled", default: false, null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["user_id"], name: "index_reminder_preferences_on_user_id", unique: true
+  end
+
   create_table "users", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "email", null: false
     t.string "name", null: false
     t.string "password_digest", null: false
+    t.string "phone_number"
     t.datetime "updated_at", null: false
     t.index ["email"], name: "index_users_on_email", unique: true
   end
@@ -94,5 +124,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_06_034500) do
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "auth_identities", "users"
   add_foreign_key "profiles", "users"
+  add_foreign_key "reminder_deliveries", "profiles"
+  add_foreign_key "reminder_deliveries", "users"
+  add_foreign_key "reminder_preferences", "users"
   add_foreign_key "vaccination_records", "profiles"
 end
