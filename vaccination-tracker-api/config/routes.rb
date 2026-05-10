@@ -17,6 +17,7 @@ Rails.application.routes.draw do
         member do
           get :schedule, to: "profile_schedules#show"
         end
+        get :certificate, to: "certificates#show"
         resources :vaccination_records, only: %i[index show create update destroy]
       end
       get :health, to: "health#show"

@@ -329,3 +329,41 @@ export async function runRemindersNow(token: string) {
   const apiBaseUrl = getApiBaseUrl();
   return fetch(`${apiBaseUrl}/api/v1/reminders/run`, { method: "POST", headers: authHeaders(token) }).then((response) => parseJson<ReminderRunResponse>(response));
 }
+
+export async function downloadProfileCertificate(profileId: number, token: string, behavior: "download" | "open" = "download") {
+  const apiBaseUrl = getApiBaseUrl();
+  const response = await fetch(`${apiBaseUrl}/api/v1/profiles/${profileId}/certificate`, {
+    headers: authHeaders(token),
+  });
+
+  if (!response.ok) {
+    let message = "Unable to download the certificate.";
+    try {
+      const body = await response.json();
+      if (typeof body?.error === "string") message = body.error;
+      if (Array.isArray(body?.errors)) message = body.errors.join(", ");
+    } catch {}
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+  const filename = filenameMatch?.[1] || `vaccination-certificate-${profileId}.pdf`;
+  const objectUrl = window.URL.createObjectURL(blob);
+
+  if (behavior === "open") {
+    window.open(objectUrl, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 60_000);
+    return filename;
+  }
+
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 0);
+  return filename;
+}

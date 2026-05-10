@@ -4,6 +4,7 @@ import { type ChangeEvent, type FormEvent, useEffect, useState, useTransition } 
 import {
   createProfile,
   createVaccinationRecord,
+  downloadProfileCertificate,
   deleteProfile,
   deleteVaccinationRecord,
   fetchCalendar,
@@ -78,6 +79,7 @@ export function AuthShell() {
   const [reminderError, setReminderError] = useState<string | null>(null);
   const [reminderHistoryError, setReminderHistoryError] = useState<string | null>(null);
   const [reminderNotice, setReminderNotice] = useState<string | null>(null);
+  const [certificateError, setCertificateError] = useState<string | null>(null);
   const [loadingSession, setLoadingSession] = useState(true);
   const [loadingRecords, setLoadingRecords] = useState(false);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
@@ -285,6 +287,7 @@ export function AuthShell() {
     setReminderError(null);
     setReminderHistoryError(null);
     setReminderNotice(null);
+    setCertificateError(null);
   }
 
   async function refreshDashboardAndCalendar(nextMonth?: string) {
@@ -350,7 +353,7 @@ export function AuthShell() {
       setDashboard(null); setCalendar(null); setSelectedCalendarDate(null); setActiveProfileId(null); setProfileMode("create"); setRecordMode("create");
       setEditingProfileId(null); setEditingRecordId(null); setProfileForm(emptyProfileForm); setRecordForm(emptyRecordForm); setReminderForm(emptyReminderForm); setReminderDeliveries([]);
       setLoginForm(emptyLoginForm); setSignUpForm(emptySignUpForm);
-      setError(null); setRecordsError(null); setScheduleError(null); setDashboardError(null); setCalendarError(null); setReminderError(null); setReminderHistoryError(null); setReminderNotice(null);
+      setError(null); setRecordsError(null); setScheduleError(null); setDashboardError(null); setCalendarError(null); setReminderError(null); setReminderHistoryError(null); setReminderNotice(null); setCertificateError(null);
     });
   }
 
@@ -467,6 +470,19 @@ export function AuthShell() {
         setReminderNotice(`Reminder run finished: ${result.sent} sent, ${result.failed} failed, ${result.skipped} skipped.`);
       } catch (runError) {
         setReminderError(runError instanceof Error ? runError.message : "Unable to run reminders right now.");
+      }
+    });
+  }
+
+  function handleCertificateAction(behavior: "download" | "open") {
+    if (!token || !activeProfile) return;
+    setCertificateError(null);
+
+    startTransition(async () => {
+      try {
+        await downloadProfileCertificate(activeProfile.id, token, behavior);
+      } catch (downloadError) {
+        setCertificateError(downloadError instanceof Error ? downloadError.message : "Unable to generate the certificate right now.");
       }
     });
   }
@@ -745,6 +761,25 @@ export function AuthShell() {
                 </div>
                 {scheduleError ? <p className="mt-4 text-sm text-rose-500">{scheduleError}</p> : null}
                 {activeProfile ? activeSchedule ? activeSchedule.missing_date_of_birth ? <div className="mt-5 rounded-[1.4rem] border border-dashed border-amber-300 bg-amber-50 p-5 text-sm text-amber-900">Add a date of birth for {activeProfile.name} to generate the routine vaccination schedule preview.</div> : <><div className="mt-5 grid gap-3 sm:grid-cols-3"><ScheduleSummaryCard label="Completed" status="completed" count={activeSchedule.summary.completed} /><ScheduleSummaryCard label="Upcoming" status="upcoming" count={activeSchedule.summary.upcoming} /><ScheduleSummaryCard label="Overdue" status="overdue" count={activeSchedule.summary.overdue} /></div><div className="mt-5 space-y-3">{schedulePreviewItems.map((item) => <article key={item.schedule_key} className="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-4"><div className="flex flex-col gap-3"><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-semibold text-slate-950">{item.vaccine_name}</h3><StatusPill status={item.status} /></div><p className="text-sm text-slate-600">{item.dose_label} due on {item.due_date}</p></div></article>)}</div></> : <EmptyState text="Loading the active profile schedule." /> : <EmptyState text="Select a profile to see the routine vaccination schedule." />}
+              </section>
+
+              <section className="rounded-[2rem] border border-cyan-100 bg-white/90 p-6 shadow-[0_18px_50px_rgba(8,145,178,0.1)] sm:p-8">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-xl font-semibold text-slate-950">Vaccination certificate</h2>
+                    <p className="mt-1 text-sm text-slate-600">Generate an official-style PDF summary for the selected profile’s recorded vaccinations.</p>
+                  </div>
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <button type="button" onClick={() => handleCertificateAction("download")} disabled={isPending || !activeProfile} className="rounded-full border border-cyan-200 px-4 py-2 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-70">{isPending ? "Preparing..." : "Download PDF"}</button>
+                    <button type="button" onClick={() => handleCertificateAction("open")} disabled={isPending || !activeProfile} className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70">Open in new tab</button>
+                  </div>
+                </div>
+                <div className="mt-5 rounded-[1.4rem] border border-slate-200 bg-slate-50 p-5">
+                  <p className="text-sm font-semibold text-slate-950">{activeProfile ? activeProfile.name : "No profile selected"}</p>
+                  <p className="mt-1 text-sm text-slate-600">{activeProfile ? `${capitalize(activeProfile.relationship_kind)} · ${activeProfile.schedule_region}` : "Select a profile to generate a certificate."}</p>
+                  <p className="mt-3 text-sm text-slate-600">{activeProfile ? activeRecords.length > 0 ? `The certificate will summarize ${activeRecords.length} recorded vaccination${activeRecords.length === 1 ? "" : "s"} with dose dates and providers.` : "This profile has no recorded vaccinations yet, but you can still generate a certificate with an empty-state summary." : ""}</p>
+                </div>
+                {certificateError ? <p className="mt-4 text-sm text-rose-500">{certificateError}</p> : null}
               </section>
 
               <section className="rounded-[2rem] bg-slate-950 p-6 text-slate-50 shadow-[0_24px_80px_rgba(15,23,42,0.28)] sm:p-8">

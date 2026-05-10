@@ -176,6 +176,36 @@ describe("AuthShell", () => {
     await waitFor(() => expect(deleteRecordMock).toHaveBeenCalledWith(2, 2, "saved-token"));
   });
 
+  it("renders certificate actions for the active profile and downloads the certificate", async () => {
+    window.localStorage.setItem("vaccination-tracker-auth-token", "saved-token");
+    vi.spyOn(api, "fetchCurrentUser").mockResolvedValue({ user: { id: 1, name: "Bandana Pandey", email: "bandana@example.com", phone_number: null }, auth: { available_methods: ["password"], oauth_ready: true }, profiles: authPayload({ date_of_birth: "1990-01-01" }) });
+    const downloadProfileCertificateMock = vi.spyOn(api, "downloadProfileCertificate").mockResolvedValue("vaccination-certificate-bandana-pandey.pdf");
+
+    render(<AuthShell />);
+    await waitFor(() => expect(screen.getByRole("heading", { name: /vaccination certificate/i })).toBeInTheDocument());
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /download pdf/i })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: /download pdf/i }));
+
+    await waitFor(() => expect(downloadProfileCertificateMock).toHaveBeenCalledWith(1, "saved-token", "download"));
+  });
+
+  it("updates certificate actions when the active profile changes", async () => {
+    window.localStorage.setItem("vaccination-tracker-auth-token", "saved-token");
+    vi.spyOn(api, "fetchCurrentUser").mockResolvedValue({ user: { id: 1, name: "Bandana Pandey", email: "bandana@example.com", phone_number: null }, auth: { available_methods: ["password"], oauth_ready: true }, profiles: [{ ...authPayload()[0], date_of_birth: "1990-01-01" }, { id: 2, name: "Aarav Pandey", date_of_birth: "2022-08-10", gender: "male", relationship_kind: "child", medical_notes: null, schedule_region: "US" }] });
+    const downloadProfileCertificateMock = vi.spyOn(api, "downloadProfileCertificate").mockResolvedValue("vaccination-certificate-aarav-pandey.pdf");
+
+    render(<AuthShell />);
+    await waitFor(() => expect(screen.getByRole("heading", { name: /vaccination certificate/i })).toBeInTheDocument());
+
+    await waitFor(() => expect(screen.getAllByRole("button", { name: /aarav pandey/i }).length).toBeGreaterThan(0));
+    fireEvent.click(screen.getAllByRole("button", { name: /aarav pandey/i })[0]);
+    await waitFor(() => expect(screen.getByRole("button", { name: /open in new tab/i })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: /open in new tab/i }));
+
+    await waitFor(() => expect(downloadProfileCertificateMock).toHaveBeenCalledWith(2, "saved-token", "open"));
+  });
+
   it("saves reminder settings and updates the phone number", async () => {
     window.localStorage.setItem("vaccination-tracker-auth-token", "saved-token");
     vi.spyOn(api, "fetchCurrentUser").mockResolvedValue({ user: { id: 1, name: "Bandana Pandey", email: "bandana@example.com", phone_number: null }, auth: { available_methods: ["password"], oauth_ready: true }, profiles: authPayload({ date_of_birth: "1990-01-01" }) });
