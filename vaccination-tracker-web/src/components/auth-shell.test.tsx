@@ -172,6 +172,7 @@ describe("AuthShell", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: /aarav pandey/i })[0]);
     await waitFor(() => expect(screen.getAllByText(/polio/i).length).toBeGreaterThan(0));
+    expect(screen.getByRole("link", { name: /view proof/i })).toHaveAttribute("href", "http://localhost:3001/rails/active_storage/blobs/proof");
     fireEvent.click(screen.getByRole("button", { name: /delete record/i }));
     await waitFor(() => expect(deleteRecordMock).toHaveBeenCalledWith(2, 2, "saved-token"));
   });
