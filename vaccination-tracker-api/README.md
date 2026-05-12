@@ -64,3 +64,13 @@ bin/rails solid_queue:start
 ```bash
 bundle exec rails test
 ```
+
+## OAuth providers
+
+- Google and GitHub sign-in are supported through the API
+- Required provider variables:
+  - `GOOGLE_CLIENT_ID`
+  - `GOOGLE_CLIENT_SECRET`
+  - `GITHUB_CLIENT_ID`
+  - `GITHUB_CLIENT_SECRET`
+- `OAUTH_FRONTEND_ORIGIN` can be set when the popup callback should post its result to a frontend origin that differs from the first `FRONTEND_APP_URL` value

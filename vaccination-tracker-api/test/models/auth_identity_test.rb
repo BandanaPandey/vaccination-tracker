@@ -40,4 +40,22 @@ class AuthIdentityTest < ActiveSupport::TestCase
     assert_not duplicate.valid?
     assert_includes duplicate.errors[:uid], "has already been taken"
   end
+
+  test "allows the same email across different providers" do
+    AuthIdentity.create!(
+      user: @user,
+      provider: "google",
+      uid: "abc123",
+      email: "shared@example.com"
+    )
+
+    second_identity = AuthIdentity.new(
+      user: @user,
+      provider: "github",
+      uid: "def456",
+      email: "shared@example.com"
+    )
+
+    assert second_identity.valid?
+  end
 end

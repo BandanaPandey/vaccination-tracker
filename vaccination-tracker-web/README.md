@@ -18,6 +18,8 @@ Open [http://localhost:3000](http://localhost:3000) after starting the dev serve
 
 The frontend expects the API to be hosted separately. Outside development and test environments, `NEXT_PUBLIC_API_BASE_URL` must be set explicitly.
 
+The signed-out experience supports popup-based Google and GitHub sign-in through the Rails API. Provider secrets stay on the backend only.
+
 ## Build and run
 
 ```bash

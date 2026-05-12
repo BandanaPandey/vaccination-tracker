@@ -3,11 +3,13 @@
 import { type ChangeEvent, type FormEvent, useEffect, useState, useTransition } from "react";
 import { resolveApiUrl } from "@/lib/config";
 import {
+  authenticateWithOAuth,
   createProfile,
   createVaccinationRecord,
   downloadProfileCertificate,
   deleteProfile,
   deleteVaccinationRecord,
+  fetchAuthOptions,
   fetchCalendar,
   fetchCurrentUser,
   fetchDashboard,
@@ -23,6 +25,7 @@ import {
   updateReminderPreference,
   updateVaccinationRecord,
   type AuthMetadata,
+  type OAuthProvider,
   type CalendarDay,
   type CalendarResponse,
   type CurrentUser,
@@ -94,6 +97,21 @@ export function AuthShell() {
   const activeRecords = activeProfile ? recordsByProfile[activeProfile.id] ?? [] : [];
   const activeSchedule = activeProfile ? schedulesByProfile[activeProfile.id] ?? null : null;
   const selectedCalendarDay = calendar?.days.find((day) => day.date === selectedCalendarDate) ?? null;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadAuthOptions() {
+      try {
+        const response = await fetchAuthOptions();
+        if (!isMounted) return;
+        setAuthMetadata(response);
+      } catch {}
+    }
+
+    void loadAuthOptions();
+    return () => { isMounted = false; };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -384,6 +402,19 @@ export function AuthShell() {
     });
   }
 
+  function handleOAuthSignIn(provider: OAuthProvider) {
+    setError(null);
+
+    startTransition(async () => {
+      try {
+        const response = await authenticateWithOAuth(provider);
+        applySession(response.token, response.user, response.auth, response.profiles);
+      } catch (oauthError) {
+        setError(oauthError instanceof Error ? oauthError.message : "Unable to complete sign-in.");
+      }
+    });
+  }
+
   function handleProfileSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!token) return;
@@ -579,7 +610,7 @@ export function AuthShell() {
                   <InfoCard label="SMS phone" value={currentUser.phone_number || "Not set"} />
                   <InfoCard label="Profiles tracked" value={String(dashboard?.family_summary.total_profiles ?? profiles.length)} />
                   <InfoCard label="Overdue doses" value={String(dashboard?.family_summary.overdue ?? 0)} tone="rose" />
-                  <InfoCard label="OAuth readiness" value={authMetadata?.oauth_ready ? "Provider model ready" : "Password only"} />
+                  <InfoCard label="OAuth providers" value={authMetadata?.oauth_providers?.length ? authMetadata.oauth_providers.map((provider) => provider.label).join(" and ") : "Password only"} />
                 </div>
               </div>
               <button type="button" onClick={handleLogout} disabled={isPending} className="inline-flex items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70">{isPending ? "Logging out..." : "Log out"}</button>
@@ -879,7 +910,7 @@ export function AuthShell() {
     );
   }
 
-  return <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#dbeafe,_#eff6ff_45%,_#ffffff_75%)] px-5 py-8 text-slate-900 sm:px-8 lg:px-10"><div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1.05fr_0.95fr]"><section className="rounded-[2rem] border border-sky-100 bg-white/90 p-6 shadow-[0_24px_80px_rgba(14,116,144,0.12)] sm:p-8"><span className="inline-flex rounded-full bg-sky-100 px-3 py-1 text-sm font-semibold text-sky-800">Secure family vaccination records</span><h1 className="mt-5 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">Sign in to start tracking vaccinations with an API-first health record workspace.</h1><p className="mt-4 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">This milestone adds email/password authentication now, while keeping the backend identity model ready for future OAuth providers.</p><div className="mt-8 grid gap-4 sm:grid-cols-2"><InfoCard label="Available now" value="Email and password login" /><InfoCard label="Designed next" value="Google and other OAuth providers" /><InfoCard label="Frontend" value="Responsive Next.js client" /><InfoCard label="Backend" value="Stateless Rails API auth" /></div></section><section className="rounded-[2rem] bg-slate-950 p-6 text-slate-50 shadow-[0_24px_80px_rgba(15,23,42,0.28)] sm:p-8"><div className="flex flex-wrap gap-3"><button type="button" onClick={() => setMode("login")} className={`rounded-full px-4 py-2 text-sm font-semibold transition ${mode === "login" ? "bg-cyan-100 text-slate-950" : "border border-white/15 text-slate-100 hover:bg-white/10"}`}>Log in</button><button type="button" onClick={() => setMode("signup")} className={`rounded-full px-4 py-2 text-sm font-semibold transition ${mode === "signup" ? "bg-cyan-100 text-slate-950" : "border border-white/15 text-slate-100 hover:bg-white/10"}`}>Create account</button></div>{mode === "login" ? <form className="mt-8 grid gap-4" onSubmit={handleLogin}><AuthField label="Email" type="email" value={loginForm.email} onChange={(value) => setLoginForm((current) => ({ ...current, email: value }))} placeholder="you@example.com" /><AuthField label="Password" type="password" value={loginForm.password} onChange={(value) => setLoginForm((current) => ({ ...current, password: value }))} placeholder="At least 8 characters" /><button type="submit" disabled={isPending} className="mt-2 rounded-full bg-cyan-100 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-70">{isPending ? "Logging in..." : "Log in"}</button></form> : <form className="mt-8 grid gap-4" onSubmit={handleSignup}><AuthField label="Name" value={signUpForm.name} onChange={(value) => setSignUpForm((current) => ({ ...current, name: value }))} placeholder="Bandana Pandey" /><AuthField label="Email" type="email" value={signUpForm.email} onChange={(value) => setSignUpForm((current) => ({ ...current, email: value }))} placeholder="you@example.com" /><AuthField label="Password" type="password" value={signUpForm.password} onChange={(value) => setSignUpForm((current) => ({ ...current, password: value }))} placeholder="At least 8 characters" /><AuthField label="Confirm password" type="password" value={signUpForm.password_confirmation} onChange={(value) => setSignUpForm((current) => ({ ...current, password_confirmation: value }))} placeholder="Repeat your password" /><button type="submit" disabled={isPending} className="mt-2 rounded-full bg-cyan-100 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-70">{isPending ? "Creating account..." : "Create account"}</button></form>}{error ? <p className="mt-4 text-sm text-rose-300">{error}</p> : null}</section></div></main>;
+  return <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#dbeafe,_#eff6ff_45%,_#ffffff_75%)] px-5 py-8 text-slate-900 sm:px-8 lg:px-10"><div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1.05fr_0.95fr]"><section className="rounded-[2rem] border border-sky-100 bg-white/90 p-6 shadow-[0_24px_80px_rgba(14,116,144,0.12)] sm:p-8"><span className="inline-flex rounded-full bg-sky-100 px-3 py-1 text-sm font-semibold text-sky-800">Secure family vaccination records</span><h1 className="mt-5 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">One secure place for family vaccination history, reminders, and downloadable proof.</h1><p className="mt-4 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">Manage lifelong immunization records across self, children, and dependents with schedules, reminders, certificates, and an independently deployable API-first backend.</p><div className="mt-8 grid gap-4 sm:grid-cols-2"><InfoCard label="Sign-in options" value={authMetadata?.oauth_providers?.length ? `Password + ${authMetadata.oauth_providers.map((provider) => provider.label).join(" + ")}` : "Email and password"} /><InfoCard label="Family tracking" value="Profiles, records, reminders, and certificates" /><InfoCard label="Frontend" value="Responsive Next.js client" /><InfoCard label="Backend" value="Rails API with OAuth and bearer tokens" /></div></section><section className="rounded-[2rem] bg-slate-950 p-6 text-slate-50 shadow-[0_24px_80px_rgba(15,23,42,0.28)] sm:p-8"><div className="flex flex-wrap gap-3"><button type="button" onClick={() => setMode("login")} className={`rounded-full px-4 py-2 text-sm font-semibold transition ${mode === "login" ? "bg-cyan-100 text-slate-950" : "border border-white/15 text-slate-100 hover:bg-white/10"}`}>Log in</button><button type="button" onClick={() => setMode("signup")} className={`rounded-full px-4 py-2 text-sm font-semibold transition ${mode === "signup" ? "bg-cyan-100 text-slate-950" : "border border-white/15 text-slate-100 hover:bg-white/10"}`}>Create account</button></div>{mode === "login" ? <form className="mt-8 grid gap-4" onSubmit={handleLogin}><AuthField label="Email" type="email" value={loginForm.email} onChange={(value) => setLoginForm((current) => ({ ...current, email: value }))} placeholder="you@example.com" /><AuthField label="Password" type="password" value={loginForm.password} onChange={(value) => setLoginForm((current) => ({ ...current, password: value }))} placeholder="At least 8 characters" /><button type="submit" disabled={isPending} className="mt-2 rounded-full bg-cyan-100 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-70">{isPending ? "Logging in..." : "Log in"}</button></form> : <form className="mt-8 grid gap-4" onSubmit={handleSignup}><AuthField label="Name" value={signUpForm.name} onChange={(value) => setSignUpForm((current) => ({ ...current, name: value }))} placeholder="Bandana Pandey" /><AuthField label="Email" type="email" value={signUpForm.email} onChange={(value) => setSignUpForm((current) => ({ ...current, email: value }))} placeholder="you@example.com" /><AuthField label="Password" type="password" value={signUpForm.password} onChange={(value) => setSignUpForm((current) => ({ ...current, password: value }))} placeholder="At least 8 characters" /><AuthField label="Confirm password" type="password" value={signUpForm.password_confirmation} onChange={(value) => setSignUpForm((current) => ({ ...current, password_confirmation: value }))} placeholder="Repeat your password" /><button type="submit" disabled={isPending} className="mt-2 rounded-full bg-cyan-100 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-70">{isPending ? "Creating account..." : "Create account"}</button></form>}{authMetadata?.oauth_providers?.length ? <div className="mt-6 space-y-4"><div className="flex items-center gap-3"><div className="h-px flex-1 bg-white/15" /><p className="text-xs font-semibold tracking-[0.16em] text-slate-300 uppercase">Or continue with</p><div className="h-px flex-1 bg-white/15" /></div><div className="grid gap-3 sm:grid-cols-2">{authMetadata.oauth_providers.map((provider) => <button key={provider.key} type="button" onClick={() => handleOAuthSignIn(provider.key)} disabled={isPending} className="rounded-[1.1rem] border border-white/15 bg-white/8 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/12 disabled:cursor-not-allowed disabled:opacity-70">Continue with {provider.label}</button>)}</div></div> : null}{error ? <p className="mt-4 text-sm text-rose-300">{error}</p> : null}</section></div></main>;
 }
 
 function getCurrentMonthKey() { return new Date().toISOString().slice(0, 7); }

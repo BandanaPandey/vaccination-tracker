@@ -5,6 +5,9 @@ Rails.application.routes.draw do
     namespace :v1 do
       post "auth/signup", to: "auth#signup"
       post "auth/login", to: "auth#login"
+      get "auth/options", to: "auth#options"
+      get "auth/oauth/:provider", to: "auth#oauth_start", constraints: { provider: /google|github/ }
+      get "auth/oauth/:provider/callback", to: "auth#oauth_callback", constraints: { provider: /google|github/ }
       get "auth/me", to: "auth#me"
       delete "auth/logout", to: "auth#logout"
       get :dashboard, to: "dashboards#show"

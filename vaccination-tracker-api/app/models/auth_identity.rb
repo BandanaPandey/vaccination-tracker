@@ -5,7 +5,6 @@ class AuthIdentity < ApplicationRecord
 
   validates :provider, presence: true
   validates :uid, presence: true, uniqueness: { scope: :provider, case_sensitive: false }
-  validates :email, uniqueness: { case_sensitive: false }, allow_blank: true
 
   private
 

@@ -35,6 +35,11 @@ This project is designed for independent deployment of the Rails API and the Nex
 - `TWILIO_ACCOUNT_SID`
 - `TWILIO_AUTH_TOKEN`
 - `TWILIO_FROM_NUMBER`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GITHUB_CLIENT_ID`
+- `GITHUB_CLIENT_SECRET`
+- `OAUTH_FRONTEND_ORIGIN`
 - `SOLID_QUEUE_IN_PUMA`
 
 ### Runtime expectations
@@ -63,6 +68,15 @@ This project is designed for independent deployment of the Rails API and the Nex
 - `NEXT_PUBLIC_API_BASE_URL` must point to the deployed Rails API origin
 - `FRONTEND_APP_URL` on the API must include the deployed frontend origin
 - Multiple frontend origins can be configured by separating them with commas in `FRONTEND_APP_URL`
+- If OAuth popup callbacks need an explicit `postMessage` target, set `OAUTH_FRONTEND_ORIGIN`
+
+## OAuth provider setup
+
+- Configure Google and GitHub callback URLs to point to the Rails API:
+  - `/api/v1/auth/oauth/google/callback`
+  - `/api/v1/auth/oauth/github/callback`
+- Keep provider client secrets on the Rails API only
+- Confirm the deployed frontend can open popups to the API origin
 
 ## Storage setup
 

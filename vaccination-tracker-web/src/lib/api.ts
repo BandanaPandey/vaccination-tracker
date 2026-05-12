@@ -164,9 +164,17 @@ export type CurrentUser = {
   phone_number: string | null;
 };
 
+export type OAuthProvider = "google" | "github";
+
+export type OAuthProviderMetadata = {
+  key: OAuthProvider;
+  label: string;
+};
+
 export type AuthMetadata = {
   available_methods: string[];
   oauth_ready: boolean;
+  oauth_providers?: OAuthProviderMetadata[];
 };
 
 export type AuthResponse = {
@@ -231,6 +239,11 @@ export async function signUp(input: { name: string; email: string; password: str
 export async function login(input: { email: string; password: string }) {
   const apiBaseUrl = getApiBaseUrl();
   return fetch(`${apiBaseUrl}/api/v1/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session: input }) }).then((response) => parseJson<AuthResponse>(response));
+}
+
+export async function fetchAuthOptions() {
+  const apiBaseUrl = getApiBaseUrl();
+  return fetch(`${apiBaseUrl}/api/v1/auth/options`, { cache: "no-store" }).then((response) => parseJson<AuthMetadata>(response));
 }
 
 export async function fetchCurrentUser(token: string) {
@@ -366,4 +379,44 @@ export async function downloadProfileCertificate(profileId: number, token: strin
   link.remove();
   window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 0);
   return filename;
+}
+
+export async function authenticateWithOAuth(provider: OAuthProvider) {
+  const apiBaseUrl = getApiBaseUrl();
+  const oauthUrl = `${apiBaseUrl}/api/v1/auth/oauth/${provider}`;
+  const popup = window.open(oauthUrl, "vaccination-tracker-oauth", "popup=yes,width=560,height=720,resizable=yes,scrollbars=yes");
+  if (!popup) throw new Error("Popup was blocked. Please allow popups and try again.");
+
+  const allowedOrigin = new URL(apiBaseUrl).origin;
+
+  return new Promise<AuthResponse>((resolve, reject) => {
+    let completed = false;
+    const timeoutId = window.setTimeout(() => finish(new Error("Sign-in timed out. Please try again.")), 90_000);
+    const closePollId = window.setInterval(() => {
+      if (!popup.closed || completed) return;
+      finish(new Error("The sign-in window was closed before authentication completed."));
+    }, 500);
+
+    function finish(error?: Error, payload?: AuthResponse) {
+      if (completed) return;
+      completed = true;
+      window.clearTimeout(timeoutId);
+      window.clearInterval(closePollId);
+      window.removeEventListener("message", handleMessage);
+      if (error) reject(error);
+      else if (payload) resolve(payload);
+      else reject(new Error("OAuth sign-in did not return a result."));
+    }
+
+    function handleMessage(event: MessageEvent) {
+      if (event.origin !== allowedOrigin) return;
+      const data = event.data as { type?: string; payload?: AuthResponse; error?: string } | null;
+      if (data?.type !== "vaccination-tracker:oauth-result") return;
+
+      if (data.error) finish(new Error(data.error));
+      else finish(undefined, data.payload);
+    }
+
+    window.addEventListener("message", handleMessage);
+  });
 }

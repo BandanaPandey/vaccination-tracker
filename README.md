@@ -4,7 +4,7 @@ Vaccination Tracker is a monorepo with a Rails API backend and a Next.js web fro
 
 ## Apps
 
-- `vaccination-tracker-api` - Ruby on Rails 8 API for auth, profiles, records, schedules, reminders, and certificate generation
+- `vaccination-tracker-api` - Ruby on Rails 8 API for auth, OAuth sign-in, profiles, records, schedules, reminders, and certificate generation
 - `vaccination-tracker-web` - Next.js 16 frontend for the family dashboard and record management experience
 
 ## Local setup
@@ -51,6 +51,7 @@ Provider-agnostic deployment notes, production environment variables, and a smok
 - `ACTIVE_STORAGE_SERVICE` should be `amazon` in production for S3-backed uploads
 - `SMTP_*` variables configure reminder email delivery
 - `SMS_DELIVERY_ADAPTER` selects the SMS adapter, with placeholder Twilio-style vars available for future wiring
+- `GOOGLE_CLIENT_*` and `GITHUB_CLIENT_*` configure live OAuth sign-in providers
 
 ### Web
 
